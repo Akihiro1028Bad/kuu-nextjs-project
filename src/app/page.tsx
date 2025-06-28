@@ -87,7 +87,7 @@ export default function HomePage() {
                         みんなの「くぅー」温もりランキング
                     </h2>
                     <div className="grid md:grid-cols-3 gap-8">
-                        {ranking.map(([name, count, emoji], i) => (
+                        {ranking.map(([name, count], i) => (
                             <FadeIn key={i} delay={i * 200}>
                                 <div className="bg-white p-8 rounded-2xl shadow-md border border-orange-200 hover:shadow-xl transition hover:scale-[1.03] text-center">
                                     <div className="text-3xl font-extrabold text-rose-500 mb-2">#{i + 1}</div>

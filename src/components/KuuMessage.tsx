@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import styles from "@/styles/kuuMessage.module.css"; // CSS Modules でも可
 
 export default function KuuMessage() {
     const [show, setShow] = useState(true);
