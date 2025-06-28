@@ -62,9 +62,11 @@ export default function HomePage() {
             {/* Features */}
             <section className="py-24 bg-white">
                 <div className="max-w-6xl mx-auto px-6">
-                    <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center mb-16 text-orange-900">
-                        「くぅー」のあったかい楽しみ方
-                    </h2>
+                    <FadeIn delay={200}>
+                        <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center mb-16 text-orange-900">
+                            「くぅー」のあったかい楽しみ方
+                        </h2>
+                    </FadeIn>
                     <div className="grid md:grid-cols-3 gap-8">
                         {features.map((f, i) => (
                             <FadeIn key={i} delay={i * 200}>

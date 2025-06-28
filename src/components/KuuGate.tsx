@@ -1,7 +1,6 @@
 // components/KuuGate.tsx
 "use client";
 import { useState, useEffect } from "react";
-import KuuMessage from "./KuuMessage";
 
 // このコンポーネントは、ページ遷移時に「くぅーだね」のメッセージを
 // 画面中央に数秒間表示してから、実際のページを表示するためのラッパーです。
@@ -23,9 +22,6 @@ export default function KuuGate({ children }: { children: React.ReactNode }) {
 
     return (
         <>
-            {/* showPageがfalseの間はKuuMessage（「くぅーだね」）を表示 */}
-            {!showPage && <KuuMessage />}
-
             {/* showPageがtrueになると、実際のページ内容（children）を表示 */}
             {showPage && children}
         </>
