@@ -14,7 +14,7 @@ export default function KuuMessage() {
         // 2. フェードアウト終了後に完全非表示
         const hideTimer = setTimeout(() => {
             setShow(false);
-        }, 4000); // 表示 + フェードアウト時間（fadeOut: 1s）
+        }, 3000); // 表示 + フェードアウト時間（fadeOut: 1s）
 
         return () => {
             clearTimeout(fadeTimer);
