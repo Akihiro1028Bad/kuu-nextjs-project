@@ -43,6 +43,11 @@ export default function Header() {
                     <nav className={`md:flex items-center space-x-8 ${isMenuOpen ? 'block absolute top-full left-0 w-full bg-white shadow-md py-4 md:relative md:top-auto md:left-auto md:w-auto md:shadow-none' : 'hidden'}`}> {/* ★ 変更: md:flexを追加し、isMenuOpenで表示を切り替え */}
                         <ul className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-8 text-lg font-medium px-4 md:px-0"> {/* ★ 変更: flex-colとspace-y-4を追加 */}
                             <li>
+                                <Link href="/mypage" className="block text-orange-700 hover:text-amber-600 transition duration-300 transform hover:scale-105" onClick={() => setIsMenuOpen(false)}> {/* ★ 追加: クリックでメニューを閉じる */}
+                                    マイページ
+                                </Link>
+                            </li>
+                            <li>
                                 <Link href="/document" className="block text-orange-700 hover:text-amber-600 transition duration-300 transform hover:scale-105" onClick={() => setIsMenuOpen(false)}> {/* ★ 追加: クリックでメニューを閉じる */}
                                     くぅーを知る
                                 </Link>
