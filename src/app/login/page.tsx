@@ -2,7 +2,7 @@
 "use client";
 
 // Next.jsのLinkコンポーネントは、この実行環境では解決できない可能性があるため、標準の<a>タグを使用します。
-// import Link from "next/link"; 
+import Link from "next/link"; 
 
 // FadeInコンポーネントはパスの解決ができないため、ここでは使用しません。
 import FadeIn from "@/components/FadeIn"; 
@@ -103,9 +103,9 @@ export default function LoginPage() {
                         </a>
                         <p className="mt-4 text-gray-600">
                             アカウントをお持ちでないですか？{" "}
-                            <a href="/register" className="text-orange-600 font-medium hover:underline">
+                            <Link href="/register" className="text-orange-600 font-medium hover:underline">
                                 新規登録はこちら
-                            </a>
+                            </Link>
                         </p>
                     </div>
                 </div>
