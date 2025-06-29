@@ -1,10 +1,32 @@
-"use client"; 
+"use client";
 import Link from 'next/link';
 import FadeIn from "@/components/FadeIn";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import { postJson } from "@/app/lib/api";
 
 export default function Header() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const router = useRouter();
+    const pathname = usePathname();
+
+    useEffect(() => {
+        const token = localStorage.getItem("token");
+        setIsLoggedIn(!!token); // トークンがあればログイン中とみなす
+    }, [pathname]);
+
+    const handleLogout = async () => {
+        try {
+            await postJson("/logout", {});
+
+            localStorage.removeItem("token");
+            setIsLoggedIn(false);
+            router.push("/login");
+        } catch (error) {
+            console.error("ログアウト失敗:", error);
+        }
+    };
 
     return (
         <FadeIn delay={200}>
@@ -66,12 +88,23 @@ export default function Header() {
 
                         {/* ユーザー関連のリンク (モバイルメニュー時も表示) */}
                         <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 space-x-0 md:space-x-4 mt-6 md:mt-0 px-4 md:px-0"> {/* ★ 変更: flex-colとspace-y-4を追加 */}
-                            <Link href="/login" className="block text-center px-6 py-2 border border-orange-300 text-orange-700 rounded-full hover:bg-orange-50 transition duration-300 font-semibold" onClick={() => setIsMenuOpen(false)}>
-                                ログイン
-                            </Link>
-                            <Link href="/register" className="block text-center px-6 py-2 bg-orange-500 text-white rounded-full hover:bg-orange-600 transition duration-300 font-semibold shadow-md" onClick={() => setIsMenuOpen(false)}>
-                                新規登録
-                            </Link>
+                            {isLoggedIn ? (
+                                <button
+                                    onClick={handleLogout}
+                                    className="block text-center px-6 py-2 border border-red-300 text-red-600 rounded-full hover:bg-red-50 transition duration-300 font-semibold"
+                                >
+                                    ログアウト
+                                </button>
+                            ) : (
+                                <>
+                                    <Link href="/login" className="block text-center px-6 py-2 border border-orange-300 text-orange-700 rounded-full hover:bg-orange-50 transition duration-300 font-semibold" onClick={() => setIsMenuOpen(false)}>
+                                        ログイン
+                                    </Link>
+                                    <Link href="/register" className="block text-center px-6 py-2 bg-orange-500 text-white rounded-full hover:bg-orange-600 transition duration-300 font-semibold shadow-md" onClick={() => setIsMenuOpen(false)}>
+                                        新規登録
+                                    </Link>
+                                </>
+                            )}
                         </div>
                     </nav>
                 </div>

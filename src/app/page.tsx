@@ -4,6 +4,9 @@
 import Link from "next/link";
 import FadeIn from "@/components/FadeIn";
 import "@fortawesome/fontawesome-free/css/all.min.css";
+import { useEffect, useState } from "react";
+
+
 
 export default function HomePage() {
     const features = [
@@ -32,6 +35,13 @@ export default function HomePage() {
         ["癒やしのくぅー使い", 8500, ""],
         ["ほっこりくぅーさん", 7000, ""],
     ];
+
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+    useEffect(() => {
+        const token = localStorage.getItem("token");
+        setIsLoggedIn(!!token);
+    }, []);
 
     return (
         <main className="min-h-screen antialiased text-gray-800 bg-gradient-to-b from-amber-50 to-white">
@@ -103,24 +113,26 @@ export default function HomePage() {
             </section>
 
             {/* CTA */}
-            <FadeIn delay={200}>
-                <section className="py-20 bg-gradient-to-br from-pink-500 via-red-500 to-rose-500 text-white text-center">
-                    <div className="max-w-3xl mx-auto px-6">
-                        <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-6">「くぅー」で、心を温めませんか？</h3>
-                        <p className="text-base sm:text-lg md:text-xl text-pink-100 mb-10 leading-relaxed">
-                            アカウント登録して、あなただけの「くぅー」体験を今すぐ始めましょう！
-                        </p>
-                        <div className="flex flex-col sm:flex-row justify-center gap-6">
-                            <Link href="/register" className="bg-white text-rose-600 font-semibold px-8 py-4 rounded-full shadow-md hover:bg-rose-50 transition hover:scale-105">
-                                新規登録はこちら
-                            </Link>
-                            <Link href="/login" className="bg-rose-700 text-white font-semibold px-8 py-4 rounded-full shadow-md hover:bg-rose-800 transition hover:scale-105">
-                                ログインはこちら
-                            </Link>
+            {!isLoggedIn && (
+                <FadeIn delay={200}>
+                    <section className="py-20 bg-gradient-to-br from-pink-500 via-red-500 to-rose-500 text-white text-center">
+                        <div className="max-w-3xl mx-auto px-6">
+                            <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-6">「くぅー」で、心を温めませんか？</h3>
+                            <p className="text-base sm:text-lg md:text-xl text-pink-100 mb-10 leading-relaxed">
+                                アカウント登録して、あなただけの「くぅー」体験を今すぐ始めましょう！
+                            </p>
+                            <div className="flex flex-col sm:flex-row justify-center gap-6">
+                                <Link href="/register" className="bg-white text-rose-600 font-semibold px-8 py-4 rounded-full shadow-md hover:bg-rose-50 transition hover:scale-105">
+                                    新規登録はこちら
+                                </Link>
+                                <Link href="/login" className="bg-rose-700 text-white font-semibold px-8 py-4 rounded-full shadow-md hover:bg-rose-800 transition hover:scale-105">
+                                    ログインはこちら
+                                </Link>
+                            </div>
                         </div>
-                    </div>
-                </section>
-            </FadeIn>
+                    </section>
+                </FadeIn>
+            )}
         </main>
     );
 }

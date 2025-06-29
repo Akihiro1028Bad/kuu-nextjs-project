@@ -1,21 +1,20 @@
 // components/LoginPage.tsx
 "use client";
 
-// Next.jsのLinkコンポーネントは、この実行環境では解決できない可能性があるため、標準の<a>タグを使用します。
-import Link from "next/link"; 
-
-// FadeInコンポーネントはパスの解決ができないため、ここでは使用しません。
-import FadeIn from "@/components/FadeIn"; 
-
+import Link from "next/link";
+import FadeIn from "@/components/FadeIn";
 import { useState } from "react";
+import { postJsonLogin } from "@/app/lib/api";
+import Modal from "@/components/Modal";
 
 export default function LoginPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [errorMessage, setErrorMessage] = useState("");
+    const [showModal, setShowModal] = useState(false); // モーダルの表示状態を管理
 
     // ログインフォームの送信を処理します
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setErrorMessage(""); // 以前のエラーメッセージをクリアします
 
@@ -25,15 +24,20 @@ export default function LoginPage() {
             return;
         }
 
-        // API呼び出しまたは認証をシミュレートします
-        if (email === "test@example.com" && password === "password") {
-            // アラートではなく、カスタムモーダルUIを使用することを推奨します。
-            // alert("ログイン成功！");
-            console.log("ログイン成功！"); // 開発者コンソールに成功メッセージを出力
-            // ダッシュボードまたはホームページにリダイレクトします
-            window.location.href = "/";
-        } else {
-            setErrorMessage("メールアドレスまたはパスワードが間違っています。");
+        try {
+            const result = await postJsonLogin("/login", {
+                email,
+                password,
+            });
+            localStorage.setItem('token', result.token);
+            setShowModal(true); // モーダルを表示
+        } catch (err: any) {
+            if (err.message) {
+                const messages = Object.values(err.message).flat().join("\n");
+                setErrorMessage(messages);
+            } else {
+                setErrorMessage("ログインに失敗しました。");
+            }
         }
     };
 
@@ -110,6 +114,12 @@ export default function LoginPage() {
                     </div>
                 </div>
             </FadeIn>
+            <Modal
+                show={showModal}
+                okRedirectPath="/mypage"
+                title="ログイン完了！"
+                message="マイページへ移動します。"
+            />
         </main>
     );
 }
