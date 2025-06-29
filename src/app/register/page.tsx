@@ -4,16 +4,21 @@
 import { useState } from "react";
 import Link from "next/link";
 import FadeIn from "@/components/FadeIn"; // Assuming FadeIn component exists as in HomePage
+import Modal from "@/components/Modal";
 import "@fortawesome/fontawesome-free/css/all.min.css"; // Ensure Font Awesome is available if icons were used
+import { postJson } from "@/app/lib/api";
 
 export default function RegisterPage() {
+    const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [error, setError] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
+    const [showModal, setShowModal] = useState(false); // モーダルの表示状態を管理
 
-    const handleSubmit = (e: React.FormEvent) => {
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(""); // エラーメッセージをリセット
         setSuccessMessage(""); // 成功メッセージをリセット
@@ -23,12 +28,24 @@ export default function RegisterPage() {
             return;
         }
 
-        // ここに実際の登録ロジックを追加します（例: Firebase Authなど）
-        // 現時点ではダミーの成功メッセージを表示します
-        console.log("登録情報:", { email, password });
-        setSuccessMessage("登録が完了しました！ログインページへ移動してください。");
-        // 実際のアプリケーションでは、ここでAPI呼び出しなどを行います。
-        // 例: try { await firebase.auth().createUserWithEmailAndPassword(email, password); setSuccessMessage(...) } catch (err) { setError(err.message) }
+        try {
+            const result = await postJson("/register", {
+                name,
+                email,
+                password,
+                password_confirmation: confirmPassword,
+            });
+
+            setSuccessMessage("登録が完了しました！");
+            setShowModal(true); // モーダルを表示
+        } catch (err: any) {
+            if (err.errors) {
+                const messages = Object.values(err.errors).flat().join("\n");
+                setError(messages);
+            } else {
+                setError("登録に失敗しました。");
+            }
+        }
     };
 
     return (
@@ -45,6 +62,24 @@ export default function RegisterPage() {
                     </div>
 
                     <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+                        {/* 名前入力 */}
+                        <div>
+                            <label htmlFor="name" className="sr-only">
+                                名前
+                            </label>
+                            <input
+                                id="name"
+                                name="name"
+                                type="text"
+                                autoComplete="name"
+                                required
+                                className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition duration-150 ease-in-out sm:text-sm"
+                                placeholder="名前"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                            />
+                        </div>
+
                         {/* メールアドレス入力 */}
                         <div>
                             <label htmlFor="email-address" className="sr-only">
@@ -141,6 +176,12 @@ export default function RegisterPage() {
                     </div>
                 </div>
             </FadeIn>
+            <Modal
+                show={showModal}
+                okRedirectPath="/login"
+                title="登録完了！"
+                message="ログイン画面へ移動します。"
+            />
         </main>
     );
 }
