@@ -7,6 +7,7 @@ import FadeIn from "@/components/FadeIn"; // Assuming FadeIn component exists as
 import Modal from "@/components/Modal";
 import "@fortawesome/fontawesome-free/css/all.min.css"; // Ensure Font Awesome is available if icons were used
 import { postJson } from "@/app/lib/api";
+import styles from "@/styles/fadeIn.module.css";
 
 export default function RegisterPage() {
     const [name, setName] = useState("");
@@ -16,15 +17,24 @@ export default function RegisterPage() {
     const [error, setError] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
     const [showModal, setShowModal] = useState(false); // モーダルの表示状態を管理
-
+    const [isLoading, setIsLoading] = useState(false);
+    const [buttonBounce, setButtonBounce] = useState(false);
+    const [nameFocus, setNameFocus] = useState(false);
+    const [emailFocus, setEmailFocus] = useState(false);
+    const [passwordFocus, setPasswordFocus] = useState(false);
+    const [confirmFocus, setConfirmFocus] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError(""); // エラーメッセージをリセット
-        setSuccessMessage(""); // 成功メッセージをリセット
+        setError("");
+        setSuccessMessage("");
+        setIsLoading(true);
+        setButtonBounce(true);
+        setTimeout(() => setButtonBounce(false), 400);
 
         if (password !== confirmPassword) {
             setError("パスワードが一致しません。");
+            setIsLoading(false);
             return;
         }
 
@@ -33,18 +43,21 @@ export default function RegisterPage() {
                 name,
                 email,
                 password,
-                password_confirmation: confirmPassword,
             });
 
             setSuccessMessage("登録が完了しました！");
-            setShowModal(true); // モーダルを表示
+            setShowModal(true);
         } catch (err: any) {
-            if (err.errors) {
+            if (err.message) {
+                setError(err.message);
+            } else if (err.errors) {
                 const messages = Object.values(err.errors).flat().join("\n");
                 setError(messages);
             } else {
                 setError("登録に失敗しました。");
             }
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -63,76 +76,84 @@ export default function RegisterPage() {
 
                     <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
                         {/* 名前入力 */}
-                        <div>
-                            <label htmlFor="name" className="sr-only">
-                                名前
-                            </label>
+                        <div className="relative">
+                            <span className={`absolute left-3 top-1/2 transform -translate-y-1/2 text-orange-300 ${styles.iconWiggle} ${nameFocus ? styles.iconWiggleActive : ''}`}>
+                                <i className="fas fa-user"></i>
+                            </span>
                             <input
                                 id="name"
                                 name="name"
                                 type="text"
                                 autoComplete="name"
                                 required
-                                className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition duration-150 ease-in-out sm:text-sm"
+                                className={`appearance-none relative block w-full pl-10 px-4 py-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition duration-150 ease-in-out sm:text-sm ${styles.inputFocus} ${nameFocus ? styles.inputFocusActive : ''}`}
                                 placeholder="名前"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
+                                onFocus={() => setNameFocus(true)}
+                                onBlur={() => setNameFocus(false)}
                             />
                         </div>
 
                         {/* メールアドレス入力 */}
-                        <div>
-                            <label htmlFor="email-address" className="sr-only">
-                                メールアドレス
-                            </label>
+                        <div className="relative mt-4">
+                            <span className={`absolute left-3 top-1/2 transform -translate-y-1/2 text-orange-300 ${styles.iconWiggle} ${emailFocus ? styles.iconWiggleActive : ''}`}>
+                                <i className="fas fa-envelope"></i>
+                            </span>
                             <input
                                 id="email-address"
                                 name="email"
                                 type="email"
                                 autoComplete="email"
                                 required
-                                className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition duration-150 ease-in-out sm:text-sm"
+                                className={`appearance-none relative block w-full pl-10 px-4 py-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition duration-150 ease-in-out sm:text-sm ${styles.inputFocus} ${emailFocus ? styles.inputFocusActive : ''}`}
                                 placeholder="メールアドレス"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
+                                onFocus={() => setEmailFocus(true)}
+                                onBlur={() => setEmailFocus(false)}
                             />
                         </div>
 
                         {/* パスワード入力 */}
-                        <div>
-                            <label htmlFor="password" className="sr-only">
-                                パスワード
-                            </label>
+                        <div className="relative mt-4">
+                            <span className={`absolute left-3 top-1/2 transform -translate-y-1/2 text-orange-300 ${styles.iconWiggle} ${passwordFocus ? styles.iconWiggleActive : ''}`}>
+                                <i className="fas fa-lock"></i>
+                            </span>
                             <input
                                 id="password"
                                 name="password"
                                 type="password"
                                 autoComplete="new-password"
                                 required
-                                className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition duration-150 ease-in-out sm:text-sm"
+                                className={`appearance-none relative block w-full pl-10 px-4 py-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition duration-150 ease-in-out sm:text-sm ${styles.inputFocus} ${passwordFocus ? styles.inputFocusActive : ''}`}
                                 placeholder="パスワード (6文字以上)"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                minLength={6} // パスワードの最低文字数を設定
+                                minLength={6}
+                                onFocus={() => setPasswordFocus(true)}
+                                onBlur={() => setPasswordFocus(false)}
                             />
                         </div>
 
                         {/* パスワード確認入力 */}
-                        <div>
-                            <label htmlFor="confirm-password" className="sr-only">
-                                パスワード確認
-                            </label>
+                        <div className="relative mt-4">
+                            <span className={`absolute left-3 top-1/2 transform -translate-y-1/2 text-orange-300 ${styles.iconWiggle} ${confirmFocus ? styles.iconWiggleActive : ''}`}>
+                                <i className="fas fa-lock"></i>
+                            </span>
                             <input
                                 id="confirm-password"
                                 name="confirm-password"
                                 type="password"
                                 autoComplete="new-password"
                                 required
-                                className="appearance-none relative block w-full px-4 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition duration-150 ease-in-out sm:text-sm"
+                                className={`appearance-none relative block w-full pl-10 px-4 py-3 border rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition duration-150 ease-in-out sm:text-sm ${styles.inputFocus} ${confirmFocus ? styles.inputFocusActive : ''}`}
                                 placeholder="パスワードをもう一度入力"
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
-                                minLength={6} // パスワードの最低文字数を設定
+                                minLength={6}
+                                onFocus={() => setConfirmFocus(true)}
+                                onBlur={() => setConfirmFocus(false)}
                             />
                         </div>
 
@@ -154,13 +175,14 @@ export default function RegisterPage() {
                         <div>
                             <button
                                 type="submit"
-                                className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-gradient-to-r from-orange-500 to-rose-400 hover:from-orange-600 hover:to-rose-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition duration-150 ease-in-out transform hover:scale-105 shadow-md"
+                                className={`group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-gradient-to-r from-orange-500 to-rose-400 hover:from-orange-600 hover:to-rose-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition duration-150 ease-in-out transform hover:scale-105 shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${buttonBounce ? styles.bounce : ''}`}
+                                disabled={isLoading}
                             >
                                 <span className="absolute left-0 inset-y-0 flex items-center pl-3">
                                     {/* ロックアイコン */}
                                     <i className="fas fa-lock text-orange-200 group-hover:text-white transition duration-150 ease-in-out"></i>
                                 </span>
-                                新規登録
+                                {isLoading ? "登録中..." : "新規登録"}
                             </button>
                         </div>
                     </form>
@@ -181,6 +203,7 @@ export default function RegisterPage() {
                 okRedirectPath="/login"
                 title="登録完了！"
                 message="ログイン画面へ移動します。"
+                showKuuEffect={true}
             />
         </main>
     );

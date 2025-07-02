@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Header from '@/components/Header';
 import KuuMessage from '@/components/KuuMessage';
 import KuuGate from '@/components/KuuGate';
+import { AuthProvider } from '@/contexts/AuthContext';
 import { mplus } from '@/utils/fonts';
 import "./globals.css";
 
@@ -20,11 +21,13 @@ export default function RootLayout({
       <body
         className="antialiased font-mplus"
       >
-        <KuuMessage />
-        <KuuGate>
-          <Header />
-          {children}
-        </KuuGate>
+        <AuthProvider>
+          <KuuMessage />
+          <KuuGate>
+            <Header />
+            {children}
+          </KuuGate>
+        </AuthProvider>
       </body>
     </html>
   );
