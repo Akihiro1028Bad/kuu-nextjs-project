@@ -1,30 +1,28 @@
 "use client";
 import Link from 'next/link';
 import FadeIn from "@/components/FadeIn";
-import { useState, useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
-import { postJson } from "@/app/lib/api";
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Header() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const { isLoggedIn, logout, user } = useAuth();
     const router = useRouter();
-    const pathname = usePathname();
-
-    useEffect(() => {
-        const token = localStorage.getItem("token");
-        setIsLoggedIn(!!token); // トークンがあればログイン中とみなす
-    }, [pathname]);
 
     const handleLogout = async () => {
         try {
-            await postJson("/logout", {});
-
-            localStorage.removeItem("token");
-            setIsLoggedIn(false);
+            // ログアウトAPIを呼び出し（オプション）
+            // await postJson("/logout", {});
+            
+            // フロントエンド側でログアウト処理
+            logout();
             router.push("/login");
         } catch (error) {
             console.error("ログアウト失敗:", error);
+            // エラーが発生してもフロントエンド側でログアウト処理を実行
+            logout();
+            router.push("/login");
         }
     };
 
@@ -41,19 +39,17 @@ export default function Header() {
                     </div>
 
                     {/* ハンバーガーメニューボタン (携帯表示時のみ) */}
-                    <div className="md:hidden flex items-center"> {/* md:hiddenでデスクトップ時は非表示 */}
+                    <div className="md:hidden flex items-center">
                         <button
-                            onClick={() => setIsMenuOpen(!isMenuOpen)} // ★ 追加: クリックで状態を切り替える
+                            onClick={() => setIsMenuOpen(!isMenuOpen)}
                             className="text-orange-700 hover:text-orange-900 focus:outline-none focus:ring-2 focus:ring-orange-300 rounded p-2"
                             aria-label="Toggle menu"
                         >
                             {isMenuOpen ? (
-                                // メニューが開いているときはXアイコン
                                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
                                 </svg>
                             ) : (
-                                // メニューが閉じているときはハンバーガーアイコン
                                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
                                 </svg>
@@ -62,15 +58,15 @@ export default function Header() {
                     </div>
 
                     {/* ナビゲーションメニュー (デスクトップ表示) & モバイルメニュー */}
-                    <nav className={`md:flex items-center space-x-8 ${isMenuOpen ? 'block absolute top-full left-0 w-full bg-white shadow-md py-4 md:relative md:top-auto md:left-auto md:w-auto md:shadow-none' : 'hidden'}`}> {/* ★ 変更: md:flexを追加し、isMenuOpenで表示を切り替え */}
-                        <ul className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-8 text-lg font-medium px-4 md:px-0"> {/* ★ 変更: flex-colとspace-y-4を追加 */}
+                    <nav className={`md:flex items-center space-x-8 ${isMenuOpen ? 'block absolute top-full left-0 w-full bg-white shadow-md py-4 md:relative md:top-auto md:left-auto md:w-auto md:shadow-none' : 'hidden'}`}>
+                        <ul className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-8 text-lg font-medium px-4 md:px-0">
                             <li>
-                                <Link href="/mypage" className="block text-orange-700 hover:text-amber-600 transition duration-300 transform hover:scale-105" onClick={() => setIsMenuOpen(false)}> {/* ★ 追加: クリックでメニューを閉じる */}
+                                <Link href="/mypage" className="block text-orange-700 hover:text-amber-600 transition duration-300 transform hover:scale-105" onClick={() => setIsMenuOpen(false)}>
                                     マイページ
                                 </Link>
                             </li>
                             <li>
-                                <Link href="/document" className="block text-orange-700 hover:text-amber-600 transition duration-300 transform hover:scale-105" onClick={() => setIsMenuOpen(false)}> {/* ★ 追加: クリックでメニューを閉じる */}
+                                <Link href="/document" className="block text-orange-700 hover:text-amber-600 transition duration-300 transform hover:scale-105" onClick={() => setIsMenuOpen(false)}>
                                     くぅーを知る
                                 </Link>
                             </li>
@@ -87,14 +83,21 @@ export default function Header() {
                         </ul>
 
                         {/* ユーザー関連のリンク (モバイルメニュー時も表示) */}
-                        <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 space-x-0 md:space-x-4 mt-6 md:mt-0 px-4 md:px-0"> {/* ★ 変更: flex-colとspace-y-4を追加 */}
+                        <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 space-x-0 md:space-x-4 mt-6 md:mt-0 px-4 md:px-0">
                             {isLoggedIn ? (
-                                <button
-                                    onClick={handleLogout}
-                                    className="block text-center px-6 py-2 border border-red-300 text-red-600 rounded-full hover:bg-red-50 transition duration-300 font-semibold"
-                                >
-                                    ログアウト
-                                </button>
+                                <div className="flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-4">
+                                    {user && (
+                                        <span className="text-sm text-gray-600">
+                                            ようこそ、{user.name}さん
+                                        </span>
+                                    )}
+                                    <button
+                                        onClick={handleLogout}
+                                        className="block text-center px-6 py-2 border border-red-300 text-red-600 rounded-full hover:bg-red-50 transition duration-300 font-semibold"
+                                    >
+                                        ログアウト
+                                    </button>
+                                </div>
                             ) : (
                                 <>
                                     <Link href="/login" className="block text-center px-6 py-2 border border-orange-300 text-orange-700 rounded-full hover:bg-orange-50 transition duration-300 font-semibold" onClick={() => setIsMenuOpen(false)}>

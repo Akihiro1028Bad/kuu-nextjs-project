@@ -1,29 +1,47 @@
 // components/KuuGate.tsx
 "use client";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 
 // このコンポーネントは、ページ遷移時に「くぅーだね」のメッセージを
 // 画面中央に数秒間表示してから、実際のページを表示するためのラッパーです。
-export default function KuuGate({ children }: { children: React.ReactNode }) {
-    // 実際のページを表示するかどうかのフラグ
-    const [showPage, setShowPage] = useState(false);
+
+interface KuuGateProps {
+    children: React.ReactNode;
+    requireAuth?: boolean;
+}
+
+export default function KuuGate({ children, requireAuth = false }: KuuGateProps) {
+    const { isLoggedIn, checkAuthStatus } = useAuth();
+    const router = useRouter();
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        // コンポーネントがマウントされたとき（ページ遷移したとき）に、
-        // 2秒間「くぅーだね」の演出を表示したあと、ページ本体を表示する
+        const checkAuth = async () => {
+            if (requireAuth) {
+                await checkAuthStatus();
+                if (!isLoggedIn) {
+                    router.push('/login');
+                    return;
+                }
+            }
+            setIsLoading(false);
+        };
 
-        const timer = setTimeout(() => {
-            setShowPage(true); // 1秒経過後にページ本体の表示を許可
-        }, 1000); // 1秒（KuuMessageと同じ表示時間）
+        checkAuth();
+    }, [requireAuth, isLoggedIn, checkAuthStatus, router]);
 
-        // クリーンアップ関数：コンポーネントがアンマウントされるときにタイマーを解除
-        return () => clearTimeout(timer);
-    }, []);
+    if (isLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-amber-50 to-white">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
+                    <p className="mt-4 text-gray-600">読み込み中...</p>
+                </div>
+            </div>
+        );
+    }
 
-    return (
-        <>
-            {/* showPageがtrueになると、実際のページ内容（children）を表示 */}
-            {showPage && children}
-        </>
-    );
+    return <>{children}</>;
 }

@@ -1,64 +1,79 @@
-export async function postJsonLogin(endPoint: string, body: any) {
-    const res = await fetch(process.env.NEXT_PUBLIC_LARAVEL_API_URL + '/api' + endPoint, {
-        method: "POST",
+import axios from 'axios';
+
+// Next.js API用のaxiosインスタンス
+const createApiInstance = () => {
+    return axios.create({
+        baseURL: '/api',
         headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
             'X-Requested-With': 'XMLHttpRequest',
         },
-        credentials: "include",
-        body: JSON.stringify(body),
+        withCredentials: true, // Cookie送信を有効化
     });
+};
 
-    const data = await res.json();
-
-    if (!res.ok) {
-        throw data;
+export async function postJsonLogin(endPoint: string, body: any) {
+    const api = createApiInstance();
+    try {
+        const response = await api.post(endPoint, body);
+        return response.data;
+    } catch (error: any) {
+        if (error.response) {
+            throw error.response.data;
+        }
+        throw error;
     }
-
-    return data;
 }
 
 export async function postJson(endPoint: string, body: any) {
-    const token = localStorage.getItem("token");
-    const res = await fetch(process.env.NEXT_PUBLIC_LARAVEL_API_URL + '/api' + endPoint, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            'X-Requested-With': 'XMLHttpRequest',
-            Authorization: `Bearer ${token}`,
-        },
-        credentials: "include",
-        body: JSON.stringify(body),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-        throw data;
+    const api = createApiInstance();
+    try {
+        const response = await api.post(endPoint, body);
+        return response.data;
+    } catch (error: any) {
+        if (error.response) {
+            throw error.response.data;
+        }
+        throw error;
     }
-
-    return data;
 }
 
 export async function getJson(endPoint: string) {
-    const token = localStorage.getItem('token');
-    const res = await fetch(process.env.NEXT_PUBLIC_LARAVEL_API_URL + '/api' + endPoint, {
-        method: "GET",
-        headers: {
-            Authorization: `Bearer ${token}`,
-            "Accept": "application/json",
-            'X-Requested-With': 'XMLHttpRequest',
-        },
-        credentials: "include",
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-        throw data;
+    const api = createApiInstance();
+    try {
+        const response = await api.get(endPoint);
+        return response.data;
+    } catch (error: any) {
+        if (error.response) {
+            throw error.response.data;
+        }
+        throw error;
     }
+}
 
-    return data;
+export async function putJson(endPoint: string, body: any) {
+    const api = createApiInstance();
+    try {
+        const response = await api.put(endPoint, body);
+        return response.data;
+    } catch (error: any) {
+        if (error.response) {
+            throw error.response.data;
+        }
+        throw error;
+    }
+}
+
+export async function deleteJson(endPoint: string) {
+    const api = createApiInstance();
+    try {
+        const response = await api.delete(endPoint);
+        return response.data;
+    } catch (error: any) {
+        if (error.response) {
+            throw error.response.data;
+        }
+        throw error;
+    }
 }
