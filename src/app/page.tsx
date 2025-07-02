@@ -5,6 +5,7 @@ import Link from "next/link";
 import FadeIn from "@/components/FadeIn";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 import { useEffect, useState } from "react";
+import { useAuth } from '@/contexts/AuthContext';
 
 
 
@@ -36,12 +37,7 @@ export default function HomePage() {
         ["ほっこりくぅーさん", 7000, ""],
     ];
 
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-    useEffect(() => {
-        const token = localStorage.getItem("token");
-        setIsLoggedIn(!!token);
-    }, []);
+    const { isLoggedIn, loading } = useAuth();
 
     return (
         <main className="min-h-screen antialiased text-gray-800 bg-gradient-to-b from-amber-50 to-white">
@@ -113,7 +109,7 @@ export default function HomePage() {
             </section>
 
             {/* CTA */}
-            {!isLoggedIn && (
+            {!loading && !isLoggedIn && (
                 <FadeIn delay={200}>
                     <section className="py-20 bg-gradient-to-br from-pink-500 via-red-500 to-rose-500 text-white text-center">
                         <div className="max-w-3xl mx-auto px-6">

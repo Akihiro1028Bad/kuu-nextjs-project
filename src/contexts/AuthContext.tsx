@@ -14,7 +14,8 @@ interface User {
 }
 
 interface AuthContextType {
-    isLoggedIn: boolean;
+    isLoggedIn: boolean | null;
+    loading: boolean;
     user: User | null;
     login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
     logout: () => Promise<void>;
@@ -24,8 +25,9 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
     const [user, setUser] = useState<User | null>(null);
+    const [loading, setLoading] = useState(true);
 
     const login = async (email: string, password: string) => {
         try {
@@ -53,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const checkAuthStatus = async () => {
+        setLoading(true);
         try {
             const userData = await getJson('/user') as User;
             setUser(userData);
@@ -60,6 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch (error) {
             setUser(null);
             setIsLoggedIn(false);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -68,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     return (
-        <AuthContext.Provider value={{ isLoggedIn, user, login, logout, checkAuthStatus }}>
+        <AuthContext.Provider value={{ isLoggedIn, user, login, logout, checkAuthStatus, loading }}>
             {children}
         </AuthContext.Provider>
     );
