@@ -5,6 +5,7 @@ import KuuGate from '@/components/KuuGate';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { mplus } from '@/utils/fonts';
 import "./globals.css";
+import '@fortawesome/fontawesome-free/css/all.min.css';
 
 export const metadata: Metadata = {
   title: "Create Next App",

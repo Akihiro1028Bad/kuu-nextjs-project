@@ -27,7 +27,7 @@ export default function HomePage() {
             icon: "",
             title: "みんなで「くぅー」を育む",
             desc: "全国の「くぅー」好きの仲間たちと、その喜びを分かち合いませんか？ランキングで絆を深めましょう。",
-            link: "#",
+            link: "/ranking",
         },
     ];
 
@@ -104,6 +104,11 @@ export default function HomePage() {
                                 </div>
                             </FadeIn>
                         ))}
+                    </div>
+                    <div className="text-center mt-12">
+                        <Link href="/ranking" className="inline-block px-8 py-4 bg-orange-500 text-white font-semibold rounded-full hover:bg-orange-600 transition hover:scale-105 shadow-md">
+                            ランキングを見る
+                        </Link>
                     </div>
                 </div>
             </section>
