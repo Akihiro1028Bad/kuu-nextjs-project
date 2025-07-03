@@ -3,18 +3,39 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  directUrl   = env("DIRECT_URL") 
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model KuuTitle {
+  id          Int         @id @default(autoincrement())
+  level       Int         @unique
+  name        String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  kuuStatuses KuuStatus[]
+}
+
+model KuuStatus {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  kuuCount  Int      @default(0)
+  level     Int      @default(1)
+  titleId   Int
+  updatedAt DateTime @updatedAt
+  title     KuuTitle @relation(fields: [titleId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model User {
-  id                 Int       @id @default(autoincrement())
+  id                 Int        @id @default(autoincrement())
   name               String
-  email              String    @unique
+  email              String     @unique
   email_verified_at  DateTime?
-  profile_image_path String?   @default("")
+  profile_image_path String?    @default("")
   password           String
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
+  created_at         DateTime   @default(now())
+  updated_at         DateTime   @updatedAt
+  kuuStatus          KuuStatus?
 }

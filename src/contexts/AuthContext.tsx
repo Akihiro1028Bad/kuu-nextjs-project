@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { getJson, postJson } from '@/app/lib/api';
 
 interface User {
@@ -28,6 +28,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+    const lastCheckRef = useRef<number>(0);
+    const checkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const login = async (email: string, password: string) => {
         try {
@@ -35,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (res && res.user) {
                 setUser(res.user);
                 setIsLoggedIn(true);
+                lastCheckRef.current = Date.now();
                 return { success: true };
             } else {
                 setUser(null);
@@ -52,24 +55,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await postJson('/logout', {});
         setUser(null);
         setIsLoggedIn(false);
+        lastCheckRef.current = 0;
     };
 
-    const checkAuthStatus = async () => {
+    const checkAuthStatus = async (force: boolean = false) => {
+        const now = Date.now();
+        const timeSinceLastCheck = now - lastCheckRef.current;
+        
+        // 5秒以内の重複チェックを防ぐ（force=trueの場合は除く）
+        if (!force && timeSinceLastCheck < 5000) {
+            return;
+        }
+
+        // 既にチェック中の場合は待機
+        if (checkTimeoutRef.current) {
+            return;
+        }
+
         setLoading(true);
         try {
             const userData = await getJson('/user') as User;
             setUser(userData);
             setIsLoggedIn(true);
+            lastCheckRef.current = now;
         } catch (error) {
             setUser(null);
             setIsLoggedIn(false);
+            lastCheckRef.current = now;
         } finally {
             setLoading(false);
         }
     };
 
+    // 初回ロード時のみ認証チェック
     useEffect(() => {
-        checkAuthStatus();
+        checkAuthStatus(true);
     }, []);
 
     return (
