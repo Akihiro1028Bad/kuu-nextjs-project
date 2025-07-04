@@ -28,9 +28,13 @@ export async function GET(req: NextRequest) {
     const withFileData = url.searchParams.get('withFileData') === '1';
     const limit = url.searchParams.get('limit');
     const offset = url.searchParams.get('offset') || '0';
+    const userOnly = url.searchParams.get('userOnly') === '1'; // ユーザー固有の音声のみ取得
 
     // クエリ条件を構築
-    const where = { isActive: true };
+    const where: any = { isActive: true };
+    if (userOnly) {
+      where.userId = payload.userId; // ログインユーザーの音声のみ
+    }
     const take = limit ? parseInt(limit) : undefined;
     const skip = parseInt(offset);
 
