@@ -54,8 +54,9 @@ export default function KuuButtonSection() {
     const [levelUp, setLevelUp] = useState(false);
     const [kuuTextFun, setKuuTextFun] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false); // 処理中フラグ
-    const [userSounds, setUserSounds] = useState<Array<{fileData: string, userName: string, name: string}>>([]); // ユーザーが登録した音声ファイルの情報
     const [isPlayingAudio, setIsPlayingAudio] = useState(false); // 音声再生中フラグ
+    // 再生中表示スタイル切り替え用
+    const [displayStyle, setDisplayStyle] = useState(1);
 
     // くぅーのバリエーションリスト
     const kuuVariations = [
@@ -73,7 +74,7 @@ export default function KuuButtonSection() {
     const [currentPlayingText, setCurrentPlayingText] = useState("くぅー中");
     
     // 現在再生中の音声情報
-    const [currentPlayingSound, setCurrentPlayingSound] = useState<{userName: string, name: string} | null>(null);
+    const [currentPlayingSound, setCurrentPlayingSound] = useState<{name: string, userName: string} | null>(null);
 
     // レベルアップの閾値（仮の値）
     const levelUpThreshold = 10;
@@ -84,75 +85,6 @@ export default function KuuButtonSection() {
         setKuuText(random);
         setKuuTextFun(true);
         setTimeout(() => setKuuTextFun(false), 300);
-    };
-
-    // ユーザーのくぅー音声を取得
-    const fetchUserSounds = async () => {
-        try {
-            const res = await axios.get("/api/kuu/sounds");
-            const sounds = (res.data as any).sounds;
-            setUserSounds(sounds.map((sound: any) => ({
-                fileData: sound.fileData,
-                userName: sound.user?.name || 'Unknown',
-                name: sound.name
-            })));
-        } catch (e) {
-            // 音声が取得できない場合は何もしない
-        }
-    };
-
-    // ランダムなサウンドを再生する関数
-    const playRandomSound = () => {
-        if (userSounds.length > 0) {
-            const randomSoundIndex = Math.floor(Math.random() * userSounds.length);
-            const randomSound = userSounds[randomSoundIndex];
-
-            // Base64→Blob→Audio
-            const base64 = randomSound.fileData;
-            const mimeType = "audio/wav"; // 保存時の形式に合わせて
-            const byteCharacters = atob(base64);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: mimeType });
-            const url = URL.createObjectURL(blob);
-
-            const audio = new Audio(url);
-
-            setIsPlayingAudio(true);
-            setCurrentPlayingSound({
-                userName: randomSound.userName,
-                name: randomSound.name
-            });
-
-            const randomPlayingText = playingVariations[Math.floor(Math.random() * playingVariations.length)];
-            setCurrentPlayingText(randomPlayingText);
-
-            audio.play().then(() => {
-                // 再生開始
-            }).catch(error => {
-                console.error('音声の再生に失敗しました:', error);
-                setIsPlayingAudio(false);
-                setCurrentPlayingSound(null);
-                URL.revokeObjectURL(url);
-            });
-
-            audio.addEventListener('ended', () => {
-                setIsPlayingAudio(false);
-                setCurrentPlayingSound(null);
-                URL.revokeObjectURL(url);
-            });
-
-            audio.addEventListener('error', () => {
-                console.error('音声の再生中にエラーが発生しました');
-                setIsPlayingAudio(false);
-                setCurrentPlayingSound(null);
-                URL.revokeObjectURL(url);
-            });
-        }
-        // ユーザー音声がない場合は何もしない（将来的にデフォルト音声を追加可能）
     };
 
     // ユーザーのくぅー情報を取得
@@ -172,40 +104,83 @@ export default function KuuButtonSection() {
     // ボタンクリック時のハンドラー（デバウンス対応）
     const handleClick = useCallback(async () => {
         if (isProcessing || isPlayingAudio) return; // 処理中または音声再生中は重複実行を防ぐ
-        
         setIsProcessing(true);
         updateKuuText();
-        playRandomSound();
-        
-        // 即座にUIを更新（楽観的更新）
+        // 1. 音声一覧を取得
+        try {
+            const res = await axios.get("/api/kuu/sounds");
+            const sounds = (res.data as any).sounds;
+            if (!sounds || sounds.length === 0) {
+                setIsProcessing(false);
+                return;
+            }
+            // 2. ランダムに1件選ぶ
+            const randomSound = sounds[Math.floor(Math.random() * sounds.length)];
+            // 3. 選んだidでfileData取得
+            const fileRes = await axios.get(`/api/kuu/sounds/${randomSound.id}`);
+            const fileData = (fileRes.data as { fileData: string }).fileData;
+            if (!fileData || typeof fileData !== 'string' || !/^[A-Za-z0-9+/=]+$/.test(fileData)) {
+                setIsProcessing(false);
+                return;
+            }
+            // 4. 再生
+            const mimeType = "audio/wav";
+            const byteCharacters = atob(fileData);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            setIsPlayingAudio(true);
+            setCurrentPlayingSound({ name: randomSound.name, userName: randomSound.user?.name || '???' });
+            const randomPlayingText = playingVariations[Math.floor(Math.random() * playingVariations.length)];
+            setCurrentPlayingText(randomPlayingText);
+            audio.play().then(() => {
+                // 再生開始
+            }).catch(error => {
+                setIsPlayingAudio(false);
+                setCurrentPlayingSound(null);
+                URL.revokeObjectURL(url);
+            });
+            audio.addEventListener('ended', () => {
+                setIsPlayingAudio(false);
+                setCurrentPlayingSound(null);
+                URL.revokeObjectURL(url);
+            });
+            audio.addEventListener('error', () => {
+                setIsPlayingAudio(false);
+                setCurrentPlayingSound(null);
+                URL.revokeObjectURL(url);
+            });
+        } catch (e) {
+            setIsPlayingAudio(false);
+            setCurrentPlayingSound(null);
+        } finally {
+            setIsProcessing(false);
+        }
+        // 楽観的UI更新
         const optimisticCount = count + 1;
         const optimisticLevel = Math.floor(optimisticCount / 10) + 1;
         const optimisticNextLevel = (optimisticLevel * 10) - optimisticCount;
-        
         setCount(optimisticCount);
         setNextLevel(optimisticNextLevel);
-        
-        // レベルアップ演出
         if (optimisticCount % 10 === 0) {
             setLevelUp(true);
             setTimeout(() => setLevelUp(false), 900);
         }
-        
         try {
             const res = await axios.post("/api/kuu/count-up");
             const data = res.data as any;
-            // APIレスポンスで状態を同期
             setCount(data.kuuCount);
             setLevel(data.level);
             setTitle(data.title);
             setNextLevel((data.level * 10) - data.kuuCount);
         } catch (e) {
-            // エラー時は元の状態に戻す
             setCount(count);
             setNextLevel((level * 10) - count);
-            console.error('くぅーカウントアップエラー:', e);
-        } finally {
-            setIsProcessing(false);
         }
     }, [count, level, isProcessing, isPlayingAudio]);
 
@@ -224,7 +199,6 @@ export default function KuuButtonSection() {
     useEffect(() => {
         fetchKuuStatus();
         fetchRanking();
-        fetchUserSounds();
     }, []);
 
     // 進捗バーのパーセント計算
@@ -264,7 +238,7 @@ export default function KuuButtonSection() {
                 {/* くぅーボタン */}
                 <div className="relative">
                     <button
-                        className={`relative w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 rounded-full bg-gradient-to-r from-orange-500 to-rose-400 text-white text-2xl sm:text-3xl md:text-4xl font-extrabold shadow-2xl flex items-center justify-center active:scale-90 transition-all duration-150 ${isBouncing ? styles['animate-bounce-kuu'] : ''} ${isProcessing || isPlayingAudio ? 'opacity-80 cursor-not-allowed' : 'hover:scale-105'}`}
+                        className={`relative w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 rounded-full bg-gradient-to-r from-orange-500 to-rose-400 text-white text-2xl sm:text-3xl md:text-4xl font-extrabold shadow-2xl flex items-center justify-center active:scale-90 transition-all duration-150 ${isBouncing ? styles['animate-bounce-kuu'] : ''} ${(isProcessing || isPlayingAudio) ? 'opacity-80 cursor-not-allowed' : 'hover:scale-105'}`}
                         onClick={handleClickBounce}
                         disabled={isProcessing || isPlayingAudio}
                         style={{ touchAction: 'manipulation', position: 'relative', zIndex: 30 }}
@@ -273,13 +247,26 @@ export default function KuuButtonSection() {
                         {isRipple && (
                             <span className={styles.ripple} />
                         )}
-                        {isProcessing ? '...' : isPlayingAudio ? (
-                            <div className="flex items-center justify-center space-x-1">
-                                <div className="w-1 h-4 bg-white rounded-full animate-pulse" style={{animationDelay: '0ms'}}></div>
-                                <div className="w-1 h-6 bg-white rounded-full animate-pulse" style={{animationDelay: '150ms'}}></div>
-                                <div className="w-1 h-3 bg-white rounded-full animate-pulse" style={{animationDelay: '300ms'}}></div>
-                                <div className="w-1 h-5 bg-white rounded-full animate-pulse" style={{animationDelay: '450ms'}}></div>
-                            </div>
+                        {(isProcessing || isPlayingAudio) ? (
+                          <div className="flex items-center justify-center space-x-1 h-8">
+                            {[...Array(5)].map((_, i) => (
+                              <span
+                                key={i}
+                                className="inline-block w-1 bg-white rounded"
+                                style={{
+                                  height: '16px',
+                                  animation: `equalizerBar 1s ${i * 0.1}s infinite ease-in-out alternate`
+                                }}
+                              />
+                            ))}
+                            <style jsx>{`
+                              @keyframes equalizerBar {
+                                0% { height: 8px; }
+                                50% { height: 28px; }
+                                100% { height: 8px; }
+                              }
+                            `}</style>
+                          </div>
                         ) : kuuText}
                     </button>
                     
@@ -292,16 +279,22 @@ export default function KuuButtonSection() {
                         </div>
                     )}
                 </div>
+                {/* 再生中の表示パターン */}
+                {isPlayingAudio && currentPlayingSound && (
+                  <div className="flex flex-col items-center mb-3 sm:mb-4">
+                    <span className="text-xs text-orange-500 font-semibold tracking-widest mb-1 flex items-center gap-1">
+                      <span className="text-lg">👤</span>{currentPlayingSound.userName}
+                    </span>
+                    <span className="text-lg font-bold text-orange-700 bg-orange-50 rounded-full px-4 py-2 shadow border border-orange-200">
+                      「{currentPlayingSound.name}」
+                    </span>
+                  </div>
+                )}
                 {/* カウント・称号など */}
                 <div className="text-center mt-4 sm:mt-6">
                     <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-pink-600 mb-3 sm:mb-4 animate-bounce">
                         {isPlayingAudio ? currentPlayingText : "くぅー"}
                     </div>
-                    {isPlayingAudio && currentPlayingSound && (
-                        <div className="text-sm sm:text-base md:text-lg lg:text-xl font-bold text-pink-600 mb-3 sm:mb-4 animate-pulse bg-gradient-to-r from-pink-100 to-orange-100 px-3 sm:px-4 md:px-6 py-2 sm:py-3 rounded-full shadow-lg border-2 border-pink-300 mx-2">
-                            🎵 {currentPlayingSound.userName}さんの「{currentPlayingSound.name}」🎵
-                        </div>
-                    )}
                     <div className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-700 mb-1 sm:mb-2">
                         レベル {level}
                     </div>
@@ -337,8 +330,8 @@ export default function KuuButtonSection() {
                                             <span className="truncate max-w-16 sm:max-w-20 md:max-w-24">{rank.userName}</span>
                                         </td>
                                         <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-700">{rank.level}</td>
-                                        <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-700">
-                                            <span className="truncate max-w-16 sm:max-w-20 md:max-w-24 block">{rank.title}</span>
+                                        <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-normal break-words text-xs sm:text-sm text-gray-700">
+                                            <span className="block max-w-32 sm:max-w-48 md:max-w-64">{rank.title}</span>
                                         </td>
                                         <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-700">{rank.kuuCount.toLocaleString()}</td>
                                     </tr>
