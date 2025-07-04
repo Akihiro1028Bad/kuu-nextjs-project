@@ -10,7 +10,7 @@ import axios from "axios";
 
 // 光の粒アニメーション用コンポーネント
 function ParticlesBG() {
-  const [particles, setParticles] = useState<any[]>([]);
+  const [particles, setParticles] = useState<any[]>([]);{/* 音声がない場合のメッセージ */}
   useEffect(() => {
     setParticles(
       Array.from({ length: 18 }, () => ({
@@ -250,6 +250,13 @@ export default function KuuButtonSection() {
     return (
         <main className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-orange-200 via-pink-100 to-yellow-100 overflow-hidden">
             <ParticlesBG />
+            {/* プリフェッチ中のインジケーター */}
+            {isPrefetching && (
+                <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-orange-100 border border-orange-300 rounded-full px-4 py-2 shadow-lg flex items-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-sm font-medium text-orange-700">音声を準備中...</span>
+                </div>
+            )}
             <section className="relative z-10 flex flex-col items-center w-full max-w-md px-4 py-6 sm:py-8">
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-orange-900 mb-4 sm:mb-6 text-center drop-shadow">さぁ、くぅーしよう！</h2>
                 {/* 進捗バー */}
@@ -268,16 +275,21 @@ export default function KuuButtonSection() {
                 {/* くぅーボタン */}
                 <div className="relative">
                     <button
-                        className={`relative w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 rounded-full bg-gradient-to-r from-orange-500 to-rose-400 text-white text-2xl sm:text-3xl md:text-4xl font-extrabold shadow-2xl flex items-center justify-center active:scale-90 transition-all duration-150 ${isBouncing ? styles['animate-bounce-kuu'] : ''} ${(isProcessing || isPlayingAudio) ? 'opacity-80 cursor-not-allowed' : 'hover:scale-105'}`}
+                        className={`relative w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 rounded-full bg-gradient-to-r from-orange-500 to-rose-400 text-white text-2xl sm:text-3xl md:text-4xl font-extrabold shadow-2xl flex items-center justify-center active:scale-90 transition-all duration-150 ${isBouncing ? styles['animate-bounce-kuu'] : ''} ${(isProcessing || isPlayingAudio || isPrefetching) ? 'opacity-80 cursor-not-allowed' : 'hover:scale-105'}`}
                         onClick={handleClickBounce}
-                        disabled={isProcessing || isPlayingAudio}
+                        disabled={isProcessing || isPlayingAudio || isPrefetching}
                         style={{ touchAction: 'manipulation', position: 'relative', zIndex: 30 }}
                     >
                         {/* 波紋エフェクト */}
                         {isRipple && (
                             <span className={styles.ripple} />
                         )}
-                        {(isProcessing || isPlayingAudio) ? (
+                        {isPrefetching ? (
+                          <div className="flex flex-col items-center justify-center space-y-2">
+                            <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <div className="text-xs font-medium">音声読み込み中...</div>
+                          </div>
+                        ) : (isProcessing || isPlayingAudio) ? (
                           <div className="flex items-center justify-center space-x-1 h-8">
                             {[...Array(5)].map((_, i) => (
                               <span
@@ -296,6 +308,11 @@ export default function KuuButtonSection() {
                                 100% { height: 8px; }
                               }
                             `}</style>
+                          </div>
+                        ) : sounds.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center space-y-1">
+                            <div className="text-lg">🎵</div>
+                            <div className="text-xs font-medium text-center">音声がありません</div>
                           </div>
                         ) : kuuText}
                     </button>
@@ -370,6 +387,17 @@ export default function KuuButtonSection() {
                         </table>
                     </div>
                 </div>
+
+                {/* 音声がない場合のメッセージ */}
+                {!isPrefetching && sounds.length === 0 && (
+                    <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-center">
+                        <div className="text-2xl mb-2">🎵</div>
+                        <div className="text-sm text-yellow-700 font-medium mb-2">音声が登録されていません</div>
+                        <div className="text-xs text-yellow-600">
+                            他のユーザーが音声を登録するまでお待ちください
+                        </div>
+                    </div>
+                )}
             </section>
         </main>
     );
