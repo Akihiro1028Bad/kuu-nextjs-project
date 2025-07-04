@@ -60,6 +60,7 @@ export default function KuuButtonSection() {
     const [sounds, setSounds] = useState<any[]>([]); // 音声一覧
     const [soundDataMap, setSoundDataMap] = useState<Map<number, string>>(new Map()); // id→fileDataキャッシュ
     const [isPrefetching, setIsPrefetching] = useState(false);
+    const [prefetchProgress, setPrefetchProgress] = useState(0); // プリフェッチ進捗
 
     // くぅーのバリエーションリスト
     const kuuVariations = [
@@ -109,28 +110,53 @@ export default function KuuButtonSection() {
         const fetchAndPrefetch = async () => {
             setIsPrefetching(true);
             try {
+                // 1. まず音声一覧のみ取得（高速）
                 const res = await axios.get("/api/kuu/sounds");
                 const list = (res.data as any).sounds;
                 setSounds(list);
-                // fileDataを全件プリフェッチ
-                const fileDataArr = await Promise.all(
-                    list.map(async (sound: any) => {
-                        try {
-                            const fileRes = await axios.get(`/api/kuu/sounds/${sound.id}`);
-                            return [sound.id, (fileRes.data as { fileData: string }).fileData] as [number, string];
-                        } catch {
-                            return [sound.id, null] as [number, string|null];
-                        }
-                    })
-                );
-                // Mapに格納
-                setSoundDataMap(new Map(fileDataArr.filter(([id, data]) => !!data)));
-            } finally {
+                
+                // 2. 音声一覧が取得できたらプリフェッチ完了とする
+                setIsPrefetching(false);
+                
+                // 3. バックグラウンドで段階的にプリフェッチ
+                if (list.length > 0) {
+                    prefetchInBackground(list);
+                }
+            } catch (error) {
                 setIsPrefetching(false);
             }
         };
         fetchAndPrefetch();
     }, []);
+
+    // バックグラウンドで段階的にプリフェッチ
+    const prefetchInBackground = async (soundList: any[]) => {
+        try {
+            // 最初の20件のみプリフェッチ（パフォーマンス考慮）
+            const soundsToPrefetch = soundList.slice(0, 20);
+            const total = soundsToPrefetch.length;
+            
+            const fileDataArr = await Promise.all(
+                soundsToPrefetch.map(async (sound: any, index: number) => {
+                    try {
+                        const fileRes = await axios.get(`/api/kuu/sounds/${sound.id}`);
+                        // 進捗を更新
+                        setPrefetchProgress(Math.round(((index + 1) / total) * 100));
+                        return [sound.id, (fileRes.data as { fileData: string }).fileData] as [number, string];
+                    } catch {
+                        setPrefetchProgress(Math.round(((index + 1) / total) * 100));
+                        return [sound.id, null] as [number, string|null];
+                    }
+                })
+            );
+            // Mapに格納（nullでないもののみ）
+            const validData = fileDataArr.filter(([id, data]) => data !== null) as [number, string][];
+            setSoundDataMap(new Map(validData));
+            setPrefetchProgress(100);
+        } catch (error) {
+            // バックグラウンド処理なのでエラーは無視
+        }
+    };
 
     // ボタンクリック時のハンドラー
     const handleClick = useCallback(async () => {
@@ -255,6 +281,14 @@ export default function KuuButtonSection() {
                 <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-orange-100 border border-orange-300 rounded-full px-4 py-2 shadow-lg flex items-center space-x-2">
                     <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
                     <span className="text-sm font-medium text-orange-700">音声を準備中...</span>
+                </div>
+            )}
+            
+            {/* バックグラウンドプリフェッチ進捗 */}
+            {!isPrefetching && prefetchProgress > 0 && prefetchProgress < 100 && (
+                <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-blue-100 border border-blue-300 rounded-full px-4 py-2 shadow-lg flex items-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-sm font-medium text-blue-700">音声キャッシュ中... {prefetchProgress}%</span>
                 </div>
             )}
             <section className="relative z-10 flex flex-col items-center w-full max-w-md px-4 py-6 sm:py-8">
