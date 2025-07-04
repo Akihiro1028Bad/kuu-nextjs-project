@@ -11,7 +11,7 @@ const COOKIE_NAME = 'auth_token';
 // 音声ファイルの削除
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const cookie = req.cookies.get(COOKIE_NAME)?.value;
@@ -26,7 +26,8 @@ export async function DELETE(
       return NextResponse.json({ message: 'Unauthenticated.' }, { status: 401 });
     }
 
-    const soundId = parseInt(params.id);
+    const { id } = await params;
+    const soundId = parseInt(id);
     if (isNaN(soundId)) {
       return NextResponse.json({ message: '無効なIDです' }, { status: 400 });
     }
