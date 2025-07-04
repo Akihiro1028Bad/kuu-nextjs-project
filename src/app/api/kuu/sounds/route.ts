@@ -29,7 +29,6 @@ export async function GET(req: NextRequest) {
 
     const sounds = await (prisma as any).kuuSound.findMany({
       where: { 
-        userId: payload.userId,
         isActive: true 
       },
       select: withFileData ? {

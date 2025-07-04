@@ -428,7 +428,7 @@ export default function KuuButtonSection() {
                         <div className="text-2xl mb-2">🎵</div>
                         <div className="text-sm text-yellow-700 font-medium mb-2">音声が登録されていません</div>
                         <div className="text-xs text-yellow-600">
-                            他のユーザーが音声を登録するまでお待ちください
+                            誰かが音声を登録するまでお待ちください
                         </div>
                     </div>
                 )}
