@@ -10,16 +10,21 @@ import axios from "axios";
 
 // 光の粒アニメーション用コンポーネント（メモ化）
 const ParticlesBG = () => {
-  const particles = useMemo(() => 
-    Array.from({ length: 12 }, () => ({
-      width: 24 + Math.random() * 32,
-      height: 24 + Math.random() * 32,
-      left: Math.random() * 100,
-      top: Math.random() * 100,
-      color: `radial-gradient(circle, #fbbf24 0%, #f472b6 100%)`,
-      delay: Math.random() * 6,
-    })), []
-  );
+  const [particles, setParticles] = useState<any[]>([]);
+  
+  useEffect(() => {
+    // クライアントサイドでのみランダム値を生成
+    setParticles(
+      Array.from({ length: 12 }, () => ({
+        width: 24 + Math.random() * 32,
+        height: 24 + Math.random() * 32,
+        left: Math.random() * 100,
+        top: Math.random() * 100,
+        color: `radial-gradient(circle, #fbbf24 0%, #f472b6 100%)`,
+        delay: Math.random() * 6,
+      }))
+    );
+  }, []);
 
   return (
     <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
@@ -59,9 +64,13 @@ export default function KuuButtonSection() {
     const [currentPlayingSound, setCurrentPlayingSound] = useState<{name: string, userName: string} | null>(null);
     const [isBouncing, setIsBouncing] = useState(false);
     const [isRipple, setIsRipple] = useState(false);
+    const [lastPlayedSoundId, setLastPlayedSoundId] = useState<number | null>(null);
 
     // 音声オブジェクトのキャッシュ
     const audioCache = useRef<Map<number, HTMLAudioElement>>(new Map());
+    
+    // 音声選択履歴（より多様な選択のため）
+    const soundHistory = useRef<number[]>([]);
 
     // くぅーのバリエーションリスト（メモ化）
     const kuuVariations = useMemo(() => [
@@ -159,18 +168,64 @@ export default function KuuButtonSection() {
         }
     }, [soundDataMap, createAudioBlob]);
 
-    // 音声一覧＋fileDataプリフェッチ
+    // 音声一覧＋段階的プリフェッチ
     useEffect(() => {
         const fetchAndPrefetch = async () => {
             setIsPrefetching(true);
             try {
-                const res = await axios.get("/api/kuu/sounds");
-                const list = (res.data as any).sounds;
-                setSounds(list);
+                // 1. 全音声一覧を取得（fileDataなし）
+                const allSoundsRes = await axios.get("/api/kuu/sounds");
+                const allSounds = (allSoundsRes.data as any).sounds;
+                
+                if (allSounds.length === 0) {
+                    setIsPrefetching(false);
+                    return;
+                }
+                
+                // 全音声をシャッフルして、最初の数件を即座に取得
+                const shuffledAllSounds = allSounds.sort(() => Math.random() - 0.5);
+                const initialCount = Math.min(5, allSounds.length); // 最大5件まで初期取得
+                const selectedInitialSounds = shuffledAllSounds.slice(0, initialCount);
+                
+                // 選択した2件のfileDataを取得
+                const initialRes = await Promise.all(
+                    selectedInitialSounds.map(async (sound: any) => {
+                        try {
+                            const fileRes = await axios.get(`/api/kuu/sounds/${sound.id}`);
+                            return {
+                                ...sound,
+                                fileData: (fileRes.data as { fileData: string }).fileData
+                            };
+                        } catch {
+                            return null;
+                        }
+                    })
+                );
+                
+                const initialSounds = initialRes.filter(sound => sound !== null);
+                
+                if (initialSounds.length === 0) {
+                    setIsPrefetching(false);
+                    return;
+                }
+                
+                // 初期2件を即座に再生可能にする
+                const initialData = initialSounds.map((sound: any) => [
+                    sound.id, 
+                    sound.fileData
+                ] as [number, string]);
+                
+                setSoundDataMap(new Map(initialData));
+                setSounds(initialSounds);
                 setIsPrefetching(false);
                 
-                if (list.length > 0) {
-                    prefetchInBackground(list);
+                // 2. 残りの音声を段階的に取得
+                if (allSounds.length > initialCount) {
+                    // 初期取得分以外の音声を段階的に取得
+                    const remainingSounds = allSounds.filter((sound: any) => 
+                        !initialSounds.some((initial: any) => initial.id === sound.id)
+                    );
+                    progressivePrefetch(remainingSounds);
                 }
             } catch (error) {
                 setIsPrefetching(false);
@@ -179,39 +234,55 @@ export default function KuuButtonSection() {
         fetchAndPrefetch();
     }, []);
 
-    // バックグラウンドで段階的にプリフェッチ（最適化）
-    const prefetchInBackground = useCallback(async (soundList: any[]) => {
+    // 段階的に音声をプリフェッチする関数
+    const progressivePrefetch = useCallback(async (remainingSounds: any[]) => {
         try {
-            const soundsToPrefetch = soundList.slice(0, 15); // プリフェッチ数を削減
-            const total = soundsToPrefetch.length;
+            const batchSize = 3; // 3件ずつ取得（より頻繁に追加）
+            const interval = 1500; // 1.5秒間隔（より早く追加）
+            let currentSounds = [...sounds]; // 現在のsoundsをコピー
             
-            // 並列処理数を制限
-            const batchSize = 3;
-            for (let i = 0; i < soundsToPrefetch.length; i += batchSize) {
-                const batch = soundsToPrefetch.slice(i, i + batchSize);
-                await Promise.all(
-                    batch.map(async (sound: any, batchIndex: number) => {
+            for (let i = 0; i < remainingSounds.length; i += batchSize) {
+                const batch = remainingSounds.slice(i, i + batchSize);
+                
+                // バッチ内でランダムに選択（バッチサイズが3未満の場合は全て選択）
+                const shuffledBatch = batch.sort(() => Math.random() - 0.5).slice(0, Math.min(3, batch.length));
+                
+                // バッチの音声データを取得
+                const batchData = await Promise.all(
+                    shuffledBatch.map(async (sound: any) => {
                         try {
                             const fileRes = await axios.get(`/api/kuu/sounds/${sound.id}`);
-                            setPrefetchProgress(Math.round(((i + batchIndex + 1) / total) * 100));
                             return [sound.id, (fileRes.data as { fileData: string }).fileData] as [number, string];
                         } catch {
-                            setPrefetchProgress(Math.round(((i + batchIndex + 1) / total) * 100));
                             return [sound.id, null] as [number, string|null];
                         }
                     })
                 );
+                
+                // 有効なデータのみをキャッシュに追加
+                const validBatchData = batchData.filter(([id, data]) => data !== null) as [number, string][];
+                setSoundDataMap(prev => new Map([...prev, ...validBatchData]));
+                
+                // soundsリストに追加
+                const newSounds = [...currentSounds, ...shuffledBatch];
+                setSounds(newSounds);
+                currentSounds = newSounds;
+                
+                // 進捗を更新
+                const progress = Math.min(100, Math.round(((i + batchSize) / remainingSounds.length) * 100));
+                setPrefetchProgress(progress);
+                
+                // 最後のバッチでない場合は待機
+                if (i + batchSize < remainingSounds.length) {
+                    await new Promise(resolve => setTimeout(resolve, interval));
+                }
             }
             
-            const validData = soundsToPrefetch
-                .map((sound, index) => [sound.id, soundDataMap.get(sound.id)])
-                .filter(([id, data]) => data !== null) as [number, string][];
-            setSoundDataMap(new Map(validData));
             setPrefetchProgress(100);
         } catch (error) {
             // バックグラウンド処理なのでエラーは無視
         }
-    }, [soundDataMap]);
+    }, [sounds]);
 
     // ボタンクリック時のハンドラー（最適化）
     const handleClick = useCallback(async () => {
@@ -226,8 +297,25 @@ export default function KuuButtonSection() {
                 return;
             }
             
-            // ランダム選択
-            const randomSound = sounds[Math.floor(Math.random() * sounds.length)];
+            // 汎用的な異なる音声選択
+            let selectedSound;
+            
+            if (sounds.length === 1) {
+                // 音声が1件のみの場合はそれを使用
+                selectedSound = sounds[0];
+            } else {
+                // 2件以上の場合は前回と異なるものを選択
+                const lastSound = soundHistory.current[soundHistory.current.length - 1];
+                
+                if (lastSound && sounds.length > 1) {
+                    // 前回の音声を除外して選択
+                    const availableSounds = sounds.filter(sound => sound.id !== lastSound);
+                    selectedSound = availableSounds[Math.floor(Math.random() * availableSounds.length)];
+                } else {
+                    // 履歴がない場合や音声が1件の場合はランダム選択
+                    selectedSound = sounds[Math.floor(Math.random() * sounds.length)];
+                }
+            }
             
             // 楽観的UI更新（先に実行）
             const optimisticCount = count + 1;
@@ -243,7 +331,15 @@ export default function KuuButtonSection() {
             
             // 音声再生（非同期）
             setIsPlayingAudio(true);
-            playAudio(randomSound.id, randomSound);
+            setLastPlayedSoundId(selectedSound.id);
+            
+            // 履歴に追加
+            soundHistory.current.push(selectedSound.id);
+            if (soundHistory.current.length > 10) {
+                soundHistory.current.shift(); // 古い履歴を削除
+            }
+            
+            playAudio(selectedSound.id, selectedSound);
             
             // API呼び出し（非同期）
             try {
@@ -310,15 +406,15 @@ export default function KuuButtonSection() {
             {isPrefetching && (
                 <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-orange-100 border border-orange-300 rounded-full px-4 py-2 shadow-lg flex items-center space-x-2">
                     <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-sm font-medium text-orange-700">音声を準備中...</span>
+                    <span className="text-sm font-medium text-orange-700">初期音声を準備中...</span>
                 </div>
             )}
             
-            {/* バックグラウンドプリフェッチ進捗 */}
+            {/* 段階的プリフェッチ進捗 */}
             {!isPrefetching && prefetchProgress > 0 && prefetchProgress < 100 && (
-                <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-blue-100 border border-blue-300 rounded-full px-4 py-2 shadow-lg flex items-center space-x-2">
-                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-sm font-medium text-blue-700">音声キャッシュ中... {prefetchProgress}%</span>
+                <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-green-100 border border-green-300 rounded-full px-4 py-2 shadow-lg flex items-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-sm font-medium text-green-700">音声を追加中... {prefetchProgress}%</span>
                 </div>
             )}
             <section className="relative z-10 flex flex-col items-center w-full max-w-md px-4 py-6 sm:py-8">

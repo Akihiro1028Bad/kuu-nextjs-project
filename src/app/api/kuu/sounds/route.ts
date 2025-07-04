@@ -23,14 +23,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: 'Unauthenticated.' }, { status: 401 });
     }
 
-    // クエリでfileData付き取得を判定
+    // クエリパラメータを取得
     const url = req.nextUrl;
     const withFileData = url.searchParams.get('withFileData') === '1';
+    const limit = url.searchParams.get('limit');
+    const offset = url.searchParams.get('offset') || '0';
+
+    // クエリ条件を構築
+    const where = { isActive: true };
+    const take = limit ? parseInt(limit) : undefined;
+    const skip = parseInt(offset);
 
     const sounds = await (prisma as any).kuuSound.findMany({
-      where: { 
-        isActive: true 
-      },
+      where,
       select: withFileData ? {
         id: true,
         name: true,
@@ -46,6 +51,8 @@ export async function GET(req: NextRequest) {
         user: { select: { name: true } }
       },
       orderBy: { createdAt: 'desc' },
+      take,
+      skip,
     });
 
     // fileDataはwithFileData=1のときのみ返す
