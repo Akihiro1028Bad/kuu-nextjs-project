@@ -24,13 +24,16 @@ export async function POST(req: NextRequest) {
         });
         // レベル1の称号を取得
         const firstTitle = await prisma.kuuTitle.findUnique({ where: { level: 1 } });
+        if (!firstTitle) {
+            return NextResponse.json({ message: '初期称号が存在しません。管理者に連絡してください。' }, { status: 500 });
+        }
         // kuuStatusを作成
         await prisma.kuuStatus.create({
             data: {
                 userId: user.id,
                 kuuCount: 0,
                 level: 1,
-                titleId: firstTitle!.id,
+                titleId: firstTitle.id,
             },
         });
         return NextResponse.json({ message: '登録完了', user: { id: user.id, name: user.name, email: user.email, created_at: user.created_at, updated_at: user.updated_at } });

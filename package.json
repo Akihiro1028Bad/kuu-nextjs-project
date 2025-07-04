@@ -22,7 +22,8 @@
     "prisma": "^6.11.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "sweetalert2": "^11.22.1"
+    "sweetalert2": "^11.22.1",
+    "webm-duration-fix": "^1.0.4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -37,6 +38,10 @@
     "eslint-config-next": "15.3.4",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.11",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   }
 }

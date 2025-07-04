@@ -54,7 +54,7 @@ export default function KuuButtonSection() {
     const [levelUp, setLevelUp] = useState(false);
     const [kuuTextFun, setKuuTextFun] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false); // 処理中フラグ
-    const [userSounds, setUserSounds] = useState<Array<{filePath: string, userName: string, name: string}>>([]); // ユーザーが登録した音声ファイルの情報
+    const [userSounds, setUserSounds] = useState<Array<{fileData: string, userName: string, name: string}>>([]); // ユーザーが登録した音声ファイルの情報
     const [isPlayingAudio, setIsPlayingAudio] = useState(false); // 音声再生中フラグ
 
     // くぅーのバリエーションリスト
@@ -92,7 +92,7 @@ export default function KuuButtonSection() {
             const res = await axios.get("/api/kuu/sounds");
             const sounds = (res.data as any).sounds;
             setUserSounds(sounds.map((sound: any) => ({
-                filePath: sound.filePath,
+                fileData: sound.fileData,
                 userName: sound.user?.name || 'Unknown',
                 name: sound.name
             })));
@@ -104,42 +104,52 @@ export default function KuuButtonSection() {
     // ランダムなサウンドを再生する関数
     const playRandomSound = () => {
         if (userSounds.length > 0) {
-            // ユーザーが登録した音声がある場合は、その中からランダムに選択
             const randomSoundIndex = Math.floor(Math.random() * userSounds.length);
             const randomSound = userSounds[randomSoundIndex];
-            
-            const audio = new Audio(randomSound.filePath);
-            
-            // 音声再生開始
+
+            // Base64→Blob→Audio
+            const base64 = randomSound.fileData;
+            const mimeType = "audio/wav"; // 保存時の形式に合わせて
+            const byteCharacters = atob(base64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+
+            const audio = new Audio(url);
+
             setIsPlayingAudio(true);
             setCurrentPlayingSound({
                 userName: randomSound.userName,
                 name: randomSound.name
             });
-            
-            // 音声再生中のテキストをランダムに設定（ユーザー名と音声名を含む）
+
             const randomPlayingText = playingVariations[Math.floor(Math.random() * playingVariations.length)];
             setCurrentPlayingText(randomPlayingText);
-            
+
             audio.play().then(() => {
-                // 音声再生が開始された
+                // 再生開始
             }).catch(error => {
                 console.error('音声の再生に失敗しました:', error);
                 setIsPlayingAudio(false);
                 setCurrentPlayingSound(null);
+                URL.revokeObjectURL(url);
             });
-            
-            // 音声再生完了時の処理
+
             audio.addEventListener('ended', () => {
                 setIsPlayingAudio(false);
                 setCurrentPlayingSound(null);
+                URL.revokeObjectURL(url);
             });
-            
-            // 音声再生エラー時の処理
+
             audio.addEventListener('error', () => {
                 console.error('音声の再生中にエラーが発生しました');
                 setIsPlayingAudio(false);
                 setCurrentPlayingSound(null);
+                URL.revokeObjectURL(url);
             });
         }
         // ユーザー音声がない場合は何もしない（将来的にデフォルト音声を追加可能）
