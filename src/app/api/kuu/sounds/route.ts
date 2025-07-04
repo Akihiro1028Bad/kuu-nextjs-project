@@ -23,23 +23,33 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: 'Unauthenticated.' }, { status: 401 });
     }
 
+    // クエリでfileData付き取得を判定
+    const url = req.nextUrl;
+    const withFileData = url.searchParams.get('withFileData') === '1';
+
     const sounds = await (prisma as any).kuuSound.findMany({
       where: { 
         userId: payload.userId,
         isActive: true 
       },
-      include: {
-        user: {
-          select: {
-            name: true
-          }
-        }
+      select: withFileData ? {
+        id: true,
+        name: true,
+        createdAt: true,
+        duration: true,
+        fileData: true,
+        user: { select: { name: true } }
+      } : {
+        id: true,
+        name: true,
+        createdAt: true,
+        duration: true,
+        user: { select: { name: true } }
       },
       orderBy: { createdAt: 'desc' },
-      // fileDataも取得
     });
 
-    // fileDataを含めて返す
+    // fileDataはwithFileData=1のときのみ返す
     return NextResponse.json({ sounds });
   } catch (e) {
     console.error('GET /api/kuu/sounds error:', e);
