@@ -45,7 +45,7 @@ model KuuSound {
   id          Int      @id @default(autoincrement())
   userId      Int
   name        String
-  filePath    String
+  fileData    String   // Base64エンコードされた音声データ
   duration    Float?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())

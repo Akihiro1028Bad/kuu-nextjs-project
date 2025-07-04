@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/lib/prisma';
 import jwt from 'jsonwebtoken';
-import { unlink } from 'fs/promises';
-import { join } from 'path';
-import { existsSync } from 'fs';
+// import { unlink } from 'fs/promises';
+// import { join } from 'path';
+// import { existsSync } from 'fs';
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 const COOKIE_NAME = 'auth_token';
@@ -44,22 +44,7 @@ export async function DELETE(
       return NextResponse.json({ message: '音声ファイルが見つかりません' }, { status: 404 });
     }
 
-    // ファイルの削除
-    const filePath = join(process.cwd(), 'public', sound.filePath);
-    try {
-      if (existsSync(filePath)) {
-        console.log(`Deleting file: ${filePath}`);
-        await unlink(filePath);
-        console.log(`File deleted successfully: ${filePath}`);
-      } else {
-        console.log(`File not found, skipping deletion: ${filePath}`);
-      }
-    } catch (fileError) {
-      console.error('Error deleting file:', fileError);
-      // ファイル削除に失敗してもデータベースからは削除を続行
-      console.log('Continuing with database deletion despite file deletion error');
-    }
-
+    // 物理ファイル削除処理は不要なので削除
     // データベースから削除
     await (prisma as any).kuuSound.delete({
       where: { id: soundId }

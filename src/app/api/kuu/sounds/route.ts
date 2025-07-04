@@ -35,9 +35,11 @@ export async function GET(req: NextRequest) {
           }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      // fileDataも取得
     });
 
+    // fileDataを含めて返す
     return NextResponse.json({ sounds });
   } catch (e) {
     console.error('GET /api/kuu/sounds error:', e);
@@ -49,82 +51,48 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// 音声ファイルのアップロード
+// 録音データ保存専用のPOSTメソッドを復活
 export async function POST(req: NextRequest) {
   try {
     const cookie = req.cookies.get(COOKIE_NAME)?.value;
     if (!cookie) {
       return NextResponse.json({ message: 'Unauthenticated.' }, { status: 401 });
     }
-    
     let payload: any;
     try {
       payload = jwt.verify(cookie, JWT_SECRET);
     } catch (e) {
       return NextResponse.json({ message: 'Unauthenticated.' }, { status: 401 });
     }
-
     const formData = await req.formData();
     const file = formData.get('file') as File;
     const name = formData.get('name') as string;
-
     if (!file || !name) {
       return NextResponse.json({ message: 'ファイルと名前が必要です' }, { status: 400 });
     }
-
     // ファイル形式の検証
     if (!file.type.startsWith('audio/')) {
       return NextResponse.json({ message: '音声ファイルのみアップロード可能です' }, { status: 400 });
     }
-
     // ファイルサイズの制限（10MB）
     if (file.size > 10 * 1024 * 1024) {
       return NextResponse.json({ message: 'ファイルサイズは10MB以下にしてください' }, { status: 400 });
     }
-
-    // ファイル名の生成
-    const timestamp = Date.now();
-    const fileExtension = file.name.split('.').pop();
-    const fileName = `kuu_${payload.userId}_${timestamp}.${fileExtension}`;
-    
-    // アップロードディレクトリの作成
-    const uploadDir = join(process.cwd(), 'public', 'uploads', 'sounds');
-    
-    try {
-      // ディレクトリが存在しない場合は作成
-      if (!existsSync(uploadDir)) {
-        console.log(`Creating directory: ${uploadDir}`);
-        await mkdir(uploadDir, { recursive: true });
-        console.log(`Directory created successfully: ${uploadDir}`);
-      } else {
-        console.log(`Directory already exists: ${uploadDir}`);
-      }
-    } catch (dirError) {
-      console.error('Error creating directory:', dirError);
-      return NextResponse.json({ 
-        message: 'ディレクトリの作成に失敗しました', 
-        error: String(dirError) 
-      }, { status: 500 });
-    }
-
-    // ファイルの保存
-    const filePath = join(uploadDir, fileName);
+    // ファイルデータをBase64エンコード
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    await writeFile(filePath, buffer);
-
+    const base64Data = buffer.toString('base64');
     // データベースに保存
     const sound = await (prisma as any).kuuSound.create({
       data: {
         userId: payload.userId,
         name: name,
-        filePath: `/uploads/sounds/${fileName}`,
-        duration: null, // 後で音声の長さを取得する機能を追加可能
+        fileData: base64Data,
+        duration: null,
       }
     });
-
     return NextResponse.json({ 
-      message: '音声ファイルがアップロードされました',
+      message: '録音が保存されました',
       sound 
     });
   } catch (e) {

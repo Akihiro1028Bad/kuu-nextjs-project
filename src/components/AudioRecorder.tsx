@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import axios from 'axios';
+import fixWebmDuration from 'webm-duration-fix';
 
 interface AudioRecorderProps {
   onUploadSuccess: () => void;
@@ -79,14 +80,17 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
   // 音量レベルを測定する関数
   const measureVolume = useCallback(() => {
     if (!analyserRef.current) return;
-
-    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-    analyserRef.current.getByteFrequencyData(dataArray);
-
-    // 音量レベルの計算
-    const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-    setVolumeLevel(average);
-
+    const dataArray = new Uint8Array(analyserRef.current.fftSize);
+    analyserRef.current.getByteTimeDomainData(dataArray);
+    // デバッグ: 波形データの一部を出力
+    console.log('波形データサンプル:', dataArray.slice(0, 16));
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) {
+      const normalized = (dataArray[i] - 128) / 128;
+      sum += normalized * normalized;
+    }
+    const rms = Math.sqrt(sum / dataArray.length); // Root Mean Square（実効値）
+    setVolumeLevel(rms * 100); // 0〜100で表示
     if (isRecording) {
       animationFrameRef.current = requestAnimationFrame(measureVolume);
     }
@@ -97,24 +101,27 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
-      
+      // デバッグ: マイクデバイス情報
+      if (navigator.mediaDevices.enumerateDevices) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        console.log('利用可能なデバイス:', devices);
+      }
       // 音量レベル測定のためのAudioContext設定
-      const audioContext = new AudioContext();
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
       source.connect(analyser);
       analyserRef.current = analyser;
+      console.log('AudioContext/Analyser/Source接続:', { audioContext, source, analyser });
       
       // サポートされているMIMEタイプを取得
-      const mimeTypes = [
-        'audio/webm',
-        'audio/webm;codecs=opus',
-        'audio/ogg;codecs=opus',
-        'audio/mp4',
-        'audio/wav'
-      ];
-      const supportedType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'audio/webm';
+      const supportedType = 'audio/webm';
+      if (!MediaRecorder.isTypeSupported(supportedType)) {
+        alert('このブラウザはaudio/webmの録音に対応していません');
+        setIsSupported(false);
+        return;
+      }
       
       const mediaRecorder = new MediaRecorder(stream, { mimeType: supportedType });
       mediaRecorderRef.current = mediaRecorder;
@@ -126,12 +133,113 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
         }
       };
 
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: supportedType });
-        setAudioBlob(blob);
-        const url = URL.createObjectURL(blob);
+        // 録音時間を取得
+        const duration = recordingTime;
+        // webm-duration-fixでdurationを埋め込む
+        const fixedBlob = await fixWebmDuration(blob);
+
+        // === 無音トリム処理を追加 ===
+        // Blob → ArrayBuffer → AudioBuffer
+        const arrayBuffer = await fixedBlob.arrayBuffer();
+        // decodeAudioDataはコールバック形式だが、Promiseラップでasync/await対応
+        function decodeAudioDataAsync(ctx: AudioContext, ab: ArrayBuffer): Promise<AudioBuffer> {
+          return new Promise((resolve, reject) => {
+            ctx.decodeAudioData(ab, resolve, reject);
+          });
+        }
+        const audioBuffer = await decodeAudioDataAsync(audioContext, arrayBuffer.slice(0));
+
+        // 無音判定用の閾値
+        const SILENCE_THRESHOLD = 0.005; // 0.0〜1.0（より小さく）
+        const MIN_SILENCE_DURATION = 0.05; // 50ms相当
+        const sampleRate = audioBuffer.sampleRate;
+        const channelData = audioBuffer.getChannelData(0); // モノラル前提
+        const length = channelData.length;
+        const minSilenceSamples = Math.floor(sampleRate * MIN_SILENCE_DURATION);
+
+        // 前方の無音区間を検出
+        let startSample = 0;
+        for (let i = 0; i < length; i++) {
+          if (Math.abs(channelData[i]) > SILENCE_THRESHOLD) {
+            // 直前まで無音が続いていた場合のみ
+            startSample = Math.max(0, i - minSilenceSamples);
+            break;
+          }
+        }
+        // 後方の無音区間を検出
+        let endSample = length - 1;
+        for (let i = length - 1; i >= 0; i--) {
+          if (Math.abs(channelData[i]) > SILENCE_THRESHOLD) {
+            endSample = Math.min(length - 1, i + minSilenceSamples);
+            break;
+          }
+        }
+        // 切り出し範囲が不正なら全体を使う
+        if (endSample <= startSample) {
+          startSample = 0;
+          endSample = length - 1;
+        }
+        const trimmedLength = endSample - startSample + 1;
+        // 新しいAudioBufferを作成
+        const trimmedBuffer = audioContext.createBuffer(
+          audioBuffer.numberOfChannels,
+          trimmedLength,
+          sampleRate
+        );
+        for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+          const src = audioBuffer.getChannelData(ch);
+          const dst = trimmedBuffer.getChannelData(ch);
+          for (let i = 0; i < trimmedLength; i++) {
+            dst[i] = src[startSample + i];
+          }
+        }
+        // AudioBuffer → WAV Blob 変換関数
+        function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
+          // 簡易WAVエンコーダ
+          const numOfChan = buffer.numberOfChannels;
+          const length = buffer.length * numOfChan * 2 + 44;
+          const bufferArray = new ArrayBuffer(length);
+          const view = new DataView(bufferArray);
+          // RIFF identifier 'RIFF'
+          writeString(view, 0, 'RIFF');
+          view.setUint32(4, 36 + buffer.length * numOfChan * 2, true);
+          writeString(view, 8, 'WAVE');
+          // fmt chunk
+          writeString(view, 12, 'fmt ');
+          view.setUint32(16, 16, true); // chunk size
+          view.setUint16(20, 1, true); // PCM
+          view.setUint16(22, numOfChan, true);
+          view.setUint32(24, buffer.sampleRate, true);
+          view.setUint32(28, buffer.sampleRate * numOfChan * 2, true);
+          view.setUint16(32, numOfChan * 2, true);
+          view.setUint16(34, 16, true); // bits per sample
+          // data chunk
+          writeString(view, 36, 'data');
+          view.setUint32(40, buffer.length * numOfChan * 2, true);
+          // PCM samples
+          let offset = 44;
+          for (let i = 0; i < buffer.length; i++) {
+            for (let ch = 0; ch < numOfChan; ch++) {
+              let sample = buffer.getChannelData(ch)[i];
+              sample = Math.max(-1, Math.min(1, sample));
+              view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+              offset += 2;
+            }
+          }
+          return new Blob([bufferArray], { type: 'audio/wav' });
+        }
+        function writeString(view: DataView, offset: number, str: string) {
+          for (let i = 0; i < str.length; i++) {
+            view.setUint8(offset + i, str.charCodeAt(i));
+          }
+        }
+        // トリム後のWAV Blobを生成
+        const trimmedWavBlob = audioBufferToWavBlob(trimmedBuffer);
+        setAudioBlob(trimmedWavBlob);
+        const url = URL.createObjectURL(trimmedWavBlob);
         setAudioUrl(url);
-        
         // 音量測定を停止
         if (animationFrameRef.current) {
           cancelAnimationFrame(animationFrameRef.current);
@@ -240,33 +348,6 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
     setUploadMessage('');
   }, [stopRecording]);
 
-  // 録音データのアップロード
-  const uploadRecording = async () => {
-    if (!audioBlob || !soundName.trim()) {
-      setUploadMessage('音声名を入力してください');
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadMessage('');
-
-    try {
-      const formData = new FormData();
-      formData.append('file', audioBlob, `${soundName}.webm`);
-      formData.append('name', soundName);
-
-      await axios.post('/api/kuu/sounds', formData);
-      
-      setUploadMessage('録音がアップロードされました！');
-      resetRecording();
-      onUploadSuccess();
-    } catch (error: any) {
-      setUploadMessage(error.response?.data?.message || 'アップロードに失敗しました');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   // 時間のフォーマット
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -368,9 +449,12 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
               <div className="flex items-center space-x-2 mb-1">
                 <span className="text-xs text-orange-600">音量:</span>
                 <div className="flex-1 bg-orange-100 rounded-full h-2">
-                  <div 
-                    className="bg-orange-500 h-2 rounded-full transition-all duration-100"
-                    style={{ width: `${Math.min(100, (volumeLevel / 128) * 100)}%` }}
+                  <div
+                    className="h-2 rounded-full transition-all duration-100"
+                    style={{
+                      width: `${Math.min(100, (volumeLevel / 100) * 100)}%`,
+                      background: 'linear-gradient(90deg, #f59e42 0%, #f97316 100%)'
+                    }}
                   />
                 </div>
               </div>
@@ -385,8 +469,12 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
         {audioUrl && (
           <div className="space-y-3">
             <h5 className="font-medium text-orange-800">録音プレビュー</h5>
-            <audio controls src={audioUrl} className="w-full" />
-            
+            <audio
+              controls
+              src={audioUrl}
+              className="w-full"
+              onLoadedMetadata={e => console.log('duration:', e.currentTarget.duration)}
+            />
             <div>
               <label className="block text-sm font-medium text-orange-700 mb-2">
                 音声の名前
@@ -399,33 +487,38 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
                 className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
             </div>
-
+            {/* 登録（保存）ボタンを復活 */}
             <button
-              onClick={uploadRecording}
+              onClick={async () => {
+                if (!audioBlob || !soundName.trim()) return;
+                setIsUploading(true);
+                setUploadMessage('');
+                try {
+                  const formData = new FormData();
+                  formData.append('file', audioBlob, `${soundName}.wav`);
+                  formData.append('name', soundName);
+                  await axios.post('/api/kuu/sounds', formData);
+                  setUploadMessage('録音がアップロードされました！');
+                  resetRecording();
+                  onUploadSuccess();
+                } catch (error: any) {
+                  setUploadMessage(error.response?.data?.message || 'アップロードに失敗しました');
+                } finally {
+                  setIsUploading(false);
+                }
+              }}
               disabled={isUploading || !soundName.trim()}
               className="w-full px-4 py-2 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {isUploading ? 'アップロード中...' : '録音を保存'}
+              {isUploading ? 'アップロード中...' : '録音を登録'}
             </button>
+            {uploadMessage && (
+              <p className={`text-sm ${uploadMessage.includes('失敗') ? 'text-red-600' : 'text-green-600'}`}>
+                {uploadMessage}
+              </p>
+            )}
           </div>
         )}
-
-        {/* メッセージ表示 */}
-        {uploadMessage && (
-          <p className={`text-sm ${uploadMessage.includes('失敗') ? 'text-red-600' : 'text-green-600'}`}>
-            {uploadMessage}
-          </p>
-        )}
-
-        {/* 録音のヒント */}
-        <div className="text-xs text-orange-600 bg-orange-50 p-3 rounded-lg">
-          <p className="font-medium mb-1">録音のコツ：</p>
-          <ul className="space-y-1">
-            <li>• 静かな環境で録音しましょう</li>
-            <li>• マイクから適度な距離を保ちましょう</li>
-            <li>• 「くぅー」の感情を込めて録音しましょう</li>
-          </ul>
-        </div>
       </div>
     </div>
   );
