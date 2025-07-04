@@ -1,19 +1,21 @@
 // app/button/page.tsx
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import FadeIn from "@/components/FadeIn";
 import styles from "@/styles/fadeIn.module.css";
 import axios from "axios";
 // Swalはビルド環境で解決できないため、デザイン調整時はコメントアウトします
 // import Swal from "sweetalert2";
 
-// 光の粒アニメーション用コンポーネント
-function ParticlesBG() {
-  const [particles, setParticles] = useState<any[]>([]);{/* 音声がない場合のメッセージ */}
+// 光の粒アニメーション用コンポーネント（メモ化）
+const ParticlesBG = () => {
+  const [particles, setParticles] = useState<any[]>([]);
+  
   useEffect(() => {
+    // クライアントサイドでのみランダム値を生成
     setParticles(
-      Array.from({ length: 18 }, () => ({
+      Array.from({ length: 12 }, () => ({
         width: 24 + Math.random() * 32,
         height: 24 + Math.random() * 32,
         left: Math.random() * 100,
@@ -23,6 +25,7 @@ function ParticlesBG() {
       }))
     );
   }, []);
+
   return (
     <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
       {particles.map((p, i) => (
@@ -41,57 +44,54 @@ function ParticlesBG() {
       ))}
     </div>
   );
-}
+};
 
 export default function KuuButtonSection() {
     // ステート変数の定義
-    const [count, setCount] = useState(0); // くぅーのカウント数
-    const [level, setLevel] = useState(1); // 現在のレベル
-    const [title, setTitle] = useState("くぅー見習い"); // レベルに応じた称号
-    const [nextLevel, setNextLevel] = useState(10); // 次のレベルアップまでのくぅー数
+    const [count, setCount] = useState(0);
+    const [level, setLevel] = useState(1);
+    const [title, setTitle] = useState("くぅー見習い");
+    const [nextLevel, setNextLevel] = useState(10);
     const [rankingList, setRankingList] = useState<any[]>([]);
-    const [kuuText, setKuuText] = useState("くぅー"); // ボタンに表示されるくぅーのテキスト
+    const [kuuText, setKuuText] = useState("くぅー");
     const [levelUp, setLevelUp] = useState(false);
-    const [kuuTextFun, setKuuTextFun] = useState(false);
-    const [isProcessing, setIsProcessing] = useState(false); // 処理中フラグ
-    const [isPlayingAudio, setIsPlayingAudio] = useState(false); // 音声再生中フラグ
-    // 再生中表示スタイル切り替え用
-    const [displayStyle, setDisplayStyle] = useState(1);
-    const [sounds, setSounds] = useState<any[]>([]); // 音声一覧
-    const [soundDataMap, setSoundDataMap] = useState<Map<number, string>>(new Map()); // id→fileDataキャッシュ
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+    const [sounds, setSounds] = useState<any[]>([]);
+    const [soundDataMap, setSoundDataMap] = useState<Map<number, string>>(new Map());
     const [isPrefetching, setIsPrefetching] = useState(false);
+    const [prefetchProgress, setPrefetchProgress] = useState(0);
+    const [currentPlayingSound, setCurrentPlayingSound] = useState<{name: string, userName: string} | null>(null);
+    const [isBouncing, setIsBouncing] = useState(false);
+    const [isRipple, setIsRipple] = useState(false);
+    const [lastPlayedSoundId, setLastPlayedSoundId] = useState<number | null>(null);
 
-    // くぅーのバリエーションリスト
-    const kuuVariations = [
+    // 音声オブジェクトのキャッシュ
+    const audioCache = useRef<Map<number, HTMLAudioElement>>(new Map());
+    
+    // 音声選択履歴（より多様な選択のため）
+    const soundHistory = useRef<number[]>([]);
+
+    // くぅーのバリエーションリスト（メモ化）
+    const kuuVariations = useMemo(() => [
         "くぅー", "くぅ～～！", "クゥー…", "Ku-", "くううううう",
         "くぅっ！", "くぅ？"
-    ];
+    ], []);
 
-    // 音声再生中のバリエーションリスト
-    const playingVariations = [
+    // 音声再生中のバリエーションリスト（メモ化）
+    const playingVariations = useMemo(() => [
         "くぅー中", "くぅー中...", "くぅー中～～", "くぅー中♪", 
         "くぅー中！", "くぅー中...", "くぅー中～", "くぅー中♡"
-    ];
+    ], []);
 
-    // 現在の音声再生中テキスト
-    const [currentPlayingText, setCurrentPlayingText] = useState("くぅー中");
-    
-    // 現在再生中の音声情報
-    const [currentPlayingSound, setCurrentPlayingSound] = useState<{name: string, userName: string} | null>(null);
-
-    // レベルアップの閾値（仮の値）
-    const levelUpThreshold = 10;
-
-    // くぅーテキストをランダムに更新する関数
-    const updateKuuText = () => {
+    // くぅーテキストをランダムに更新する関数（メモ化）
+    const updateKuuText = useCallback(() => {
         const random = kuuVariations[Math.floor(Math.random() * kuuVariations.length)];
         setKuuText(random);
-        setKuuTextFun(true);
-        setTimeout(() => setKuuTextFun(false), 300);
-    };
+    }, [kuuVariations]);
 
     // ユーザーのくぅー情報を取得
-    const fetchKuuStatus = async () => {
+    const fetchKuuStatus = useCallback(async () => {
         try {
             const res = await axios.get("/api/kuu/status");
             const data = res.data as any;
@@ -102,19 +102,154 @@ export default function KuuButtonSection() {
         } catch (e) {
             // 未ログインや初回は何もしない
         }
-    };
+    }, []);
 
-    // 音声一覧＋fileDataプリフェッチ
+    // 音声データをBlobに変換する関数（メモ化）
+    const createAudioBlob = useCallback((fileData: string) => {
+        const byteCharacters = atob(fileData);
+        const byteNumbers = new Uint8Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        return new Blob([byteNumbers], { type: "audio/wav" });
+    }, []);
+
+    // 音声を再生する関数（最適化）
+    const playAudio = useCallback(async (soundId: number, soundInfo: any) => {
+        try {
+            // キャッシュから音声オブジェクトを取得
+            let audio = audioCache.current.get(soundId);
+            
+            if (!audio) {
+                // キャッシュにない場合は新規作成
+                let fileData = soundDataMap.get(soundId);
+                if (!fileData) {
+                    const fileRes = await axios.get(`/api/kuu/sounds/${soundId}`);
+                    fileData = (fileRes.data as { fileData: string }).fileData;
+                }
+                
+                if (!fileData || typeof fileData !== 'string' || !/^[A-Za-z0-9+/=]+$/.test(fileData)) {
+                    return false;
+                }
+                
+                const blob = createAudioBlob(fileData);
+                const url = URL.createObjectURL(blob);
+                audio = new Audio(url);
+                
+                // イベントリスナーを設定
+                audio.addEventListener('ended', () => {
+                    setIsPlayingAudio(false);
+                    setCurrentPlayingSound(null);
+                    URL.revokeObjectURL(url);
+                });
+                audio.addEventListener('error', () => {
+                    setIsPlayingAudio(false);
+                    setCurrentPlayingSound(null);
+                    URL.revokeObjectURL(url);
+                });
+                
+                // キャッシュに保存
+                audioCache.current.set(soundId, audio);
+            }
+            
+            // 音声情報を設定
+            setCurrentPlayingSound({ 
+                name: soundInfo.name, 
+                userName: soundInfo.user?.name || '???' 
+            });
+            
+            // 再生
+            await audio.play();
+            return true;
+        } catch (error) {
+            setIsPlayingAudio(false);
+            setCurrentPlayingSound(null);
+            return false;
+        }
+    }, [soundDataMap, createAudioBlob]);
+
+    // 音声一覧＋段階的プリフェッチ
     useEffect(() => {
         const fetchAndPrefetch = async () => {
             setIsPrefetching(true);
             try {
-                const res = await axios.get("/api/kuu/sounds");
-                const list = (res.data as any).sounds;
-                setSounds(list);
-                // fileDataを全件プリフェッチ
-                const fileDataArr = await Promise.all(
-                    list.map(async (sound: any) => {
+                // 1. 全音声一覧を取得（fileDataなし）
+                const allSoundsRes = await axios.get("/api/kuu/sounds");
+                const allSounds = (allSoundsRes.data as any).sounds;
+                
+                if (allSounds.length === 0) {
+                    setIsPrefetching(false);
+                    return;
+                }
+                
+                // 全音声をシャッフルして、最初の数件を即座に取得
+                const shuffledAllSounds = allSounds.sort(() => Math.random() - 0.5);
+                const initialCount = Math.min(5, allSounds.length); // 最大5件まで初期取得
+                const selectedInitialSounds = shuffledAllSounds.slice(0, initialCount);
+                
+                // 選択した2件のfileDataを取得
+                const initialRes = await Promise.all(
+                    selectedInitialSounds.map(async (sound: any) => {
+                        try {
+                            const fileRes = await axios.get(`/api/kuu/sounds/${sound.id}`);
+                            return {
+                                ...sound,
+                                fileData: (fileRes.data as { fileData: string }).fileData
+                            };
+                        } catch {
+                            return null;
+                        }
+                    })
+                );
+                
+                const initialSounds = initialRes.filter(sound => sound !== null);
+                
+                if (initialSounds.length === 0) {
+                    setIsPrefetching(false);
+                    return;
+                }
+                
+                // 初期2件を即座に再生可能にする
+                const initialData = initialSounds.map((sound: any) => [
+                    sound.id, 
+                    sound.fileData
+                ] as [number, string]);
+                
+                setSoundDataMap(new Map(initialData));
+                setSounds(initialSounds);
+                setIsPrefetching(false);
+                
+                // 2. 残りの音声を段階的に取得
+                if (allSounds.length > initialCount) {
+                    // 初期取得分以外の音声を段階的に取得
+                    const remainingSounds = allSounds.filter((sound: any) => 
+                        !initialSounds.some((initial: any) => initial.id === sound.id)
+                    );
+                    progressivePrefetch(remainingSounds);
+                }
+            } catch (error) {
+                setIsPrefetching(false);
+            }
+        };
+        fetchAndPrefetch();
+    }, []);
+
+    // 段階的に音声をプリフェッチする関数
+    const progressivePrefetch = useCallback(async (remainingSounds: any[]) => {
+        try {
+            const batchSize = 3; // 3件ずつ取得（より頻繁に追加）
+            const interval = 1500; // 1.5秒間隔（より早く追加）
+            let currentSounds = [...sounds]; // 現在のsoundsをコピー
+            
+            for (let i = 0; i < remainingSounds.length; i += batchSize) {
+                const batch = remainingSounds.slice(i, i + batchSize);
+                
+                // バッチ内でランダムに選択（バッチサイズが3未満の場合は全て選択）
+                const shuffledBatch = batch.sort(() => Math.random() - 0.5).slice(0, Math.min(3, batch.length));
+                
+                // バッチの音声データを取得
+                const batchData = await Promise.all(
+                    shuffledBatch.map(async (sound: any) => {
                         try {
                             const fileRes = await axios.get(`/api/kuu/sounds/${sound.id}`);
                             return [sound.id, (fileRes.data as { fileData: string }).fileData] as [number, string];
@@ -123,99 +258,110 @@ export default function KuuButtonSection() {
                         }
                     })
                 );
-                // Mapに格納
-                setSoundDataMap(new Map(fileDataArr.filter(([id, data]) => !!data)));
-            } finally {
-                setIsPrefetching(false);
+                
+                // 有効なデータのみをキャッシュに追加
+                const validBatchData = batchData.filter(([id, data]) => data !== null) as [number, string][];
+                setSoundDataMap(prev => new Map([...prev, ...validBatchData]));
+                
+                // soundsリストに追加
+                const newSounds = [...currentSounds, ...shuffledBatch];
+                setSounds(newSounds);
+                currentSounds = newSounds;
+                
+                // 進捗を更新
+                const progress = Math.min(100, Math.round(((i + batchSize) / remainingSounds.length) * 100));
+                setPrefetchProgress(progress);
+                
+                // 最後のバッチでない場合は待機
+                if (i + batchSize < remainingSounds.length) {
+                    await new Promise(resolve => setTimeout(resolve, interval));
+                }
             }
-        };
-        fetchAndPrefetch();
-    }, []);
+            
+            setPrefetchProgress(100);
+        } catch (error) {
+            // バックグラウンド処理なのでエラーは無視
+        }
+    }, [sounds]);
 
-    // ボタンクリック時のハンドラー
+    // ボタンクリック時のハンドラー（最適化）
     const handleClick = useCallback(async () => {
         if (isProcessing || isPlayingAudio || isPrefetching) return;
+        
         setIsProcessing(true);
         updateKuuText();
+        
         try {
             if (!sounds || sounds.length === 0) {
                 setIsProcessing(false);
                 return;
             }
-            // ランダム選択
-            const randomSound = sounds[Math.floor(Math.random() * sounds.length)];
-            // キャッシュからfileData取得
-            let fileData = soundDataMap.get(randomSound.id);
-            // キャッシュがなければAPI取得（フォールバック）
-            if (!fileData) {
-                const fileRes = await axios.get(`/api/kuu/sounds/${randomSound.id}`);
-                fileData = (fileRes.data as { fileData: string }).fileData;
+            
+            // 汎用的な異なる音声選択
+            let selectedSound;
+            
+            if (sounds.length === 1) {
+                // 音声が1件のみの場合はそれを使用
+                selectedSound = sounds[0];
+            } else {
+                // 2件以上の場合は前回と異なるものを選択
+                const lastSound = soundHistory.current[soundHistory.current.length - 1];
+                
+                if (lastSound && sounds.length > 1) {
+                    // 前回の音声を除外して選択
+                    const availableSounds = sounds.filter(sound => sound.id !== lastSound);
+                    selectedSound = availableSounds[Math.floor(Math.random() * availableSounds.length)];
+                } else {
+                    // 履歴がない場合や音声が1件の場合はランダム選択
+                    selectedSound = sounds[Math.floor(Math.random() * sounds.length)];
+                }
             }
-            if (!fileData || typeof fileData !== 'string' || !/^[A-Za-z0-9+/=]+$/.test(fileData)) {
-                setIsProcessing(false);
-                return;
+            
+            // 楽観的UI更新（先に実行）
+            const optimisticCount = count + 1;
+            const optimisticLevel = Math.floor(optimisticCount / 10) + 1;
+            const optimisticNextLevel = (optimisticLevel * 10) - optimisticCount;
+            setCount(optimisticCount);
+            setNextLevel(optimisticNextLevel);
+            
+            if (optimisticCount % 10 === 0) {
+                setLevelUp(true);
+                setTimeout(() => setLevelUp(false), 900);
             }
-            // 再生
-            const mimeType = "audio/wav";
-            const byteCharacters = atob(fileData);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: mimeType });
-            const url = URL.createObjectURL(blob);
-            const audio = new Audio(url);
+            
+            // 音声再生（非同期）
             setIsPlayingAudio(true);
-            setCurrentPlayingSound({ name: randomSound.name, userName: randomSound.user?.name || '???' });
-            const randomPlayingText = playingVariations[Math.floor(Math.random() * playingVariations.length)];
-            setCurrentPlayingText(randomPlayingText);
-            audio.play().then(() => {}).catch(error => {
-                setIsPlayingAudio(false);
-                setCurrentPlayingSound(null);
-                URL.revokeObjectURL(url);
-            });
-            audio.addEventListener('ended', () => {
-                setIsPlayingAudio(false);
-                setCurrentPlayingSound(null);
-                URL.revokeObjectURL(url);
-            });
-            audio.addEventListener('error', () => {
-                setIsPlayingAudio(false);
-                setCurrentPlayingSound(null);
-                URL.revokeObjectURL(url);
-            });
+            setLastPlayedSoundId(selectedSound.id);
+            
+            // 履歴に追加
+            soundHistory.current.push(selectedSound.id);
+            if (soundHistory.current.length > 10) {
+                soundHistory.current.shift(); // 古い履歴を削除
+            }
+            
+            playAudio(selectedSound.id, selectedSound);
+            
+            // API呼び出し（非同期）
+            try {
+                const res = await axios.post("/api/kuu/count-up");
+                const data = res.data as any;
+                setCount(data.kuuCount);
+                setLevel(data.level);
+                setTitle(data.title);
+                setNextLevel((data.level * 10) - data.kuuCount);
+            } catch (e) {
+                // エラー時は楽観的更新を維持
+            }
         } catch (e) {
             setIsPlayingAudio(false);
             setCurrentPlayingSound(null);
         } finally {
             setIsProcessing(false);
         }
-        // 楽観的UI更新
-        const optimisticCount = count + 1;
-        const optimisticLevel = Math.floor(optimisticCount / 10) + 1;
-        const optimisticNextLevel = (optimisticLevel * 10) - optimisticCount;
-        setCount(optimisticCount);
-        setNextLevel(optimisticNextLevel);
-        if (optimisticCount % 10 === 0) {
-            setLevelUp(true);
-            setTimeout(() => setLevelUp(false), 900);
-        }
-        try {
-            const res = await axios.post("/api/kuu/count-up");
-            const data = res.data as any;
-            setCount(data.kuuCount);
-            setLevel(data.level);
-            setTitle(data.title);
-            setNextLevel((data.level * 10) - data.kuuCount);
-        } catch (e) {
-            setCount(count);
-            setNextLevel((level * 10) - count);
-        }
-    }, [count, level, isProcessing, isPlayingAudio, isPrefetching, sounds, soundDataMap]);
+    }, [count, level, isProcessing, isPlayingAudio, isPrefetching, sounds, playAudio, updateKuuText]);
 
     // ランキングをフェッチする関数
-    const fetchRanking = async () => {
+    const fetchRanking = useCallback(async () => {
         try {
             const res = await fetch('/api/kuu/ranking');
             const data = await res.json();
@@ -223,29 +369,35 @@ export default function KuuButtonSection() {
         } catch (e) {
             // エラー時は何もしない
         }
-    };
+    }, []);
 
     // コンポーネントがマウントされた時に実行されるエフェクト
     useEffect(() => {
         fetchKuuStatus();
         fetchRanking();
-    }, []);
+    }, [fetchKuuStatus, fetchRanking]);
 
-    // 進捗バーのパーセント計算
-    const progressPercent = Math.max(0, Math.min(100, ((count % 10) / 10) * 100));
+    // 進捗バーのパーセント計算（メモ化）
+    const progressPercent = useMemo(() => 
+        Math.max(0, Math.min(100, ((count % 10) / 10) * 100)), [count]
+    );
 
     // ボタンアニメーション用
-    const [isBouncing, setIsBouncing] = useState(false);
-    const [isRipple, setIsRipple] = useState(false);
-    const handleClickBounce = async () => {
-        if (isProcessing || isPlayingAudio) return; // 処理中または音声再生中は重複実行を防ぐ
+    const handleClickBounce = useCallback(async () => {
+        if (isProcessing || isPlayingAudio) return;
         
         setIsBouncing(true);
-        setIsRipple(true); // 即座に波紋を表示
-        setTimeout(() => setIsBouncing(false), 150); // アニメーション時間をさらに短縮
-        setTimeout(() => setIsRipple(false), 250); // 波紋を早く消す
+        setIsRipple(true);
+        setTimeout(() => setIsBouncing(false), 150);
+        setTimeout(() => setIsRipple(false), 250);
         await handleClick();
-    };
+    }, [isProcessing, isPlayingAudio, handleClick]);
+
+    // 現在の音声再生中テキスト（メモ化）
+    const currentPlayingText = useMemo(() => {
+        if (!isPlayingAudio) return "くぅー";
+        return playingVariations[Math.floor(Math.random() * playingVariations.length)];
+    }, [isPlayingAudio, playingVariations]);
 
     return (
         <main className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-orange-200 via-pink-100 to-yellow-100 overflow-hidden">
@@ -254,7 +406,15 @@ export default function KuuButtonSection() {
             {isPrefetching && (
                 <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-orange-100 border border-orange-300 rounded-full px-4 py-2 shadow-lg flex items-center space-x-2">
                     <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-sm font-medium text-orange-700">音声を準備中...</span>
+                    <span className="text-sm font-medium text-orange-700">初期音声を準備中...</span>
+                </div>
+            )}
+            
+            {/* 段階的プリフェッチ進捗 */}
+            {!isPrefetching && prefetchProgress > 0 && prefetchProgress < 100 && (
+                <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-green-100 border border-green-300 rounded-full px-4 py-2 shadow-lg flex items-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-sm font-medium text-green-700">音声を追加中... {prefetchProgress}%</span>
                 </div>
             )}
             <section className="relative z-10 flex flex-col items-center w-full max-w-md px-4 py-6 sm:py-8">
@@ -340,7 +500,7 @@ export default function KuuButtonSection() {
                 {/* カウント・称号など */}
                 <div className="text-center mt-4 sm:mt-6">
                     <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-pink-600 mb-3 sm:mb-4 animate-bounce">
-                        {isPlayingAudio ? currentPlayingText : "くぅー"}
+                        {currentPlayingText}
                     </div>
                     <div className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-700 mb-1 sm:mb-2">
                         レベル {level}
@@ -394,7 +554,7 @@ export default function KuuButtonSection() {
                         <div className="text-2xl mb-2">🎵</div>
                         <div className="text-sm text-yellow-700 font-medium mb-2">音声が登録されていません</div>
                         <div className="text-xs text-yellow-600">
-                            他のユーザーが音声を登録するまでお待ちください
+                            誰かが音声を登録するまでお待ちください
                         </div>
                     </div>
                 )}

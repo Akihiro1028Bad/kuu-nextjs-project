@@ -31,11 +31,7 @@ export default function HomePage() {
         },
     ];
 
-    const ranking = [
-        ["心のくぅーマスター", 10000, ""],
-        ["癒やしのくぅー使い", 8500, ""],
-        ["ほっこりくぅーさん", 7000, ""],
-    ];
+
 
     const { isLoggedIn, loading } = useAuth();
 
@@ -88,30 +84,7 @@ export default function HomePage() {
                 </div>
             </section>
 
-            {/* Ranking */}
-            <section className="py-24 bg-orange-50">
-                <div className="max-w-5xl mx-auto px-6">
-                    <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center mb-16 text-orange-900">
-                        みんなの「くぅー」温もりランキング
-                    </h2>
-                    <div className="grid md:grid-cols-3 gap-8">
-                        {ranking.map(([name, count], i) => (
-                            <FadeIn key={i} delay={i * 200}>
-                                <div className="bg-white p-8 rounded-2xl shadow-md border border-orange-200 hover:shadow-xl transition hover:scale-[1.03] text-center">
-                                    <div className="text-2xl sm:text-3xl font-extrabold text-rose-500 mb-2">#{i + 1}</div>
-                                    <div className="text-base sm:text-lg font-bold text-gray-800 mb-1">{name}</div>
-                                    <div className="text-lg sm:text-xl text-orange-500">{count.toLocaleString()}回</div>
-                                </div>
-                            </FadeIn>
-                        ))}
-                    </div>
-                    <div className="text-center mt-12">
-                        <Link href="/ranking" className="inline-block px-8 py-4 bg-orange-500 text-white font-semibold rounded-full hover:bg-orange-600 transition hover:scale-105 shadow-md">
-                            ランキングを見る
-                        </Link>
-                    </div>
-                </div>
-            </section>
+
 
             {/* CTA */}
             {!loading && !isLoggedIn && (

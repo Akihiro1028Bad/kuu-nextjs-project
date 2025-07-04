@@ -80,11 +80,11 @@ export async function GET(
     if (isNaN(soundId)) {
       return NextResponse.json({ message: '無効なIDです' }, { status: 400 });
     }
-    // 音声ファイルの存在確認と権限チェック
+    // 音声ファイルの存在確認（全ユーザーの音声から取得）
     const sound = await (prisma as any).kuuSound.findFirst({
       where: {
         id: soundId,
-        userId: payload.userId
+        isActive: true
       },
       select: {
         fileData: true

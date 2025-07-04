@@ -19,10 +19,10 @@ export default function MyPage() {
     const { user } = useAuth();
     const [sounds, setSounds] = useState<KuuSound[]>([]);
 
-    // 音声ファイル一覧を取得
+    // 音声ファイル一覧を取得（ログインユーザーのみ）
     const fetchSounds = async () => {
         try {
-            const response = await axios.get('/api/kuu/sounds');
+            const response = await axios.get('/api/kuu/sounds?userOnly=1');
             setSounds((response.data as any).sounds);
         } catch (error) {
             console.error('音声ファイルの取得に失敗しました:', error);
@@ -116,7 +116,7 @@ export default function MyPage() {
                                 </div>
                                 {/* 音声一覧 */}
                                 <div>
-                                    <h4 className="text-lg font-semibold text-orange-800 mb-4">登録済み音声</h4>
+                                    <h4 className="text-lg font-semibold text-orange-800 mb-4">あなたの登録音声</h4>
                                     {sounds.length === 0 ? (
                                         <p className="text-orange-600 text-center py-8">まだ音声が登録されていません</p>
                                     ) : (
