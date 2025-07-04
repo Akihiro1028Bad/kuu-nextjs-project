@@ -108,6 +108,7 @@ export default function KuuButtonSection() {
         updateKuuText();
         // 1. 音声一覧を取得
         try {
+            // withFileData=1は付けずに取得
             const res = await axios.get("/api/kuu/sounds");
             const sounds = (res.data as any).sounds;
             if (!sounds || sounds.length === 0) {

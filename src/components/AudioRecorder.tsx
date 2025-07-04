@@ -365,7 +365,6 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
           <p className="text-orange-700 font-medium mb-2">録音機能がサポートされていません</p>
           <p className="text-sm text-orange-600">
             お使いのブラウザでは録音機能が利用できません。<br />
-            ファイルアップロード機能をご利用ください。
           </p>
         </div>
       </div>

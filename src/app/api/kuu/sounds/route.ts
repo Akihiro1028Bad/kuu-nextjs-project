@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    // fileDataを含めて返す
+    // fileDataはwithFileData=1のときのみ返す
     return NextResponse.json({ sounds });
   } catch (e) {
     console.error('GET /api/kuu/sounds error:', e);
