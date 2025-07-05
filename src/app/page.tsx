@@ -13,20 +13,20 @@ export default function HomePage() {
     const features = [
         {
             icon: "",
-            title: "深く、じっくり知る",
-            desc: "「くぅー」の言葉が持つ意味や背景を、温かい言葉でじっくり解説。きっと新しい発見がありますよ。",
+            title: "くぅーについて知る",
+            desc: "「くぅー」の言葉が持つ意味や背景を、じっくり解説。きっと新しい発見がありますよ。",
             link: "/document",
         },
         {
             icon: "",
-            title: "癒やしの「くぅー」連打",
-            desc: "心地よい響きと共にボタンを連打！心と体を癒やしながら、「くぅー」レベルをどんどん上げましょう！",
+            title: "「くぅー」をひたすら連打",
+            desc: "みんなの「くぅー」を聞きながら、くぅーをひたすら連打しましょう！",
             link: "/button",
         },
         {
             icon: "",
-            title: "みんなで「くぅー」を育む",
-            desc: "全国の「くぅー」好きの仲間たちと、その喜びを分かち合いませんか？ランキングで絆を深めましょう。",
+            title: "「くぅー」レベルを競う",
+            desc: "みんなで「くぅー」を分かち合いませんか？ランキングで絆を深めましょう。",
             link: "/ranking",
         },
     ];
@@ -48,14 +48,14 @@ export default function HomePage() {
                     </h1>
                     <p className="mt-6 text-base sm:text-lg md:text-xl text-orange-800 leading-relaxed animate-fade-in">
                         くぅーって言いたくなる瞬間、あるよね。<br />
-                        その気持ち、大事にしよう。
+                        その気持ち、大事。
                     </p>
                     <div className="mt-10 flex flex-col sm:flex-row justify-center gap-6 animate-fade-in">
                         <Link href="/document" className="transition transform hover:scale-105 hover:shadow-xl px-8 py-4 rounded-full bg-white text-orange-700 font-semibold shadow-md">
                             「くぅー」を知る
                         </Link>
                         <Link href="/button" className="transition transform hover:scale-105 hover:shadow-xl px-8 py-4 rounded-full bg-gradient-to-r from-orange-500 to-rose-400 text-white font-semibold shadow-md">
-                            さっそく体験する
+                            「くぅー」を感じる
                         </Link>
                     </div>
                 </section>
@@ -66,7 +66,7 @@ export default function HomePage() {
                 <div className="max-w-6xl mx-auto px-6">
                     <FadeIn delay={200}>
                         <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center mb-16 text-orange-900">
-                            「くぅー」のあったかい楽しみ方
+                            「くぅー」の楽しみ方
                         </h2>
                     </FadeIn>
                     <div className="grid md:grid-cols-3 gap-8">
@@ -91,9 +91,9 @@ export default function HomePage() {
                 <FadeIn delay={200}>
                     <section className="py-20 bg-gradient-to-br from-pink-500 via-red-500 to-rose-500 text-white text-center">
                         <div className="max-w-3xl mx-auto px-6">
-                            <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-6">「くぅー」で、心を温めませんか？</h3>
+                            <h3 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-6">「くぅー」しよう！</h3>
                             <p className="text-base sm:text-lg md:text-xl text-pink-100 mb-10 leading-relaxed">
-                                アカウント登録して、あなただけの「くぅー」体験を今すぐ始めましょう！
+                                アカウント登録して、「くぅー」を今すぐ始めましょう！
                             </p>
                             <div className="flex flex-col sm:flex-row justify-center gap-6">
                                 <Link href="/register" className="bg-white text-rose-600 font-semibold px-8 py-4 rounded-full shadow-md hover:bg-rose-50 transition hover:scale-105">

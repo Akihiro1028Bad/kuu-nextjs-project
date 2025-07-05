@@ -41,7 +41,3 @@ yarn-error.log*
 next-env.d.ts
 
 /generated/prisma
-
-# uploaded files
-/public/uploads/sounds/*
-!/public/uploads/sounds/.gitkeep
