@@ -21,6 +21,9 @@ export default function MyPage() {
 
     // 音声ファイル一覧を取得（ログインユーザーのみ）
     const fetchSounds = async () => {
+        // ログインしていない場合はAPIを呼ばない
+        if (!user) return;
+        
         try {
             const response = await axios.get('/api/kuu/sounds?userOnly=1');
             setSounds((response.data as any).sounds);

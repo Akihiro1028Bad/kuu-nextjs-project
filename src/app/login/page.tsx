@@ -125,8 +125,8 @@ export default function LoginPage() {
             <Modal
                 show={showModal}
                 okRedirectPath="/mypage"
-                title="ログイン完了！"
-                message="マイページへ移動します。"
+                title="🎊 ログイン完了！"
+                message="おかえりなさい！マイページへ移動します。"
                 showKuuEffect={true}
             />
         </main>

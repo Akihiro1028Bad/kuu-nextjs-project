@@ -7,6 +7,7 @@ import styles from "@/styles/fadeIn.module.css";
 import axios from "axios";
 // Swalはビルド環境で解決できないため、デザイン調整時はコメントアウトします
 // import Swal from "sweetalert2";
+import KuuGate from "@/components/KuuGate";
 
 // 光の粒アニメーション用コンポーネント（メモ化）
 const ParticlesBG = () => {
@@ -400,165 +401,167 @@ export default function KuuButtonSection() {
     }, [isPlayingAudio, playingVariations]);
 
     return (
-        <main className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-orange-200 via-pink-100 to-yellow-100 overflow-hidden">
-            <ParticlesBG />
-            {/* プリフェッチ中のインジケーター */}
-            {isPrefetching && (
-                <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-orange-100 border border-orange-300 rounded-full px-4 py-2 shadow-lg flex items-center space-x-2">
-                    <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-sm font-medium text-orange-700">初期音声を準備中...</span>
-                </div>
-            )}
-            
-            {/* 段階的プリフェッチ進捗 */}
-            {!isPrefetching && prefetchProgress > 0 && prefetchProgress < 100 && (
-                <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-green-100 border border-green-300 rounded-full px-4 py-2 shadow-lg flex items-center space-x-2">
-                    <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-sm font-medium text-green-700">音声を追加中... {prefetchProgress}%</span>
-                </div>
-            )}
-            <section className="relative z-10 flex flex-col items-center w-full max-w-md px-4 py-6 sm:py-8">
-                <h2 className="text-2xl sm:text-3xl font-extrabold text-orange-900 mb-4 sm:mb-6 text-center drop-shadow">さぁ、くぅーしよう！</h2>
-                {/* 進捗バー */}
-                <div className="w-full mb-4 sm:mb-6">
-                    <div className="flex justify-between text-xs font-bold text-orange-700 mb-1">
-                        <span>レベル {level}</span>
-                        <span>あと {nextLevel} くぅー！</span>
+        <KuuGate requireAuth={true}>
+            <main className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-orange-200 via-pink-100 to-yellow-100 overflow-hidden">
+                <ParticlesBG />
+                {/* プリフェッチ中のインジケーター */}
+                {isPrefetching && (
+                    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-orange-100 border border-orange-300 rounded-full px-4 py-2 shadow-lg flex items-center space-x-2">
+                        <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-sm font-medium text-orange-700">初期音声を準備中...</span>
                     </div>
-                    <div className="w-full h-3 sm:h-4 bg-orange-100 rounded-full overflow-hidden shadow-inner">
-                        <div
-                            className="h-full bg-gradient-to-r from-orange-400 to-rose-400 transition-all duration-500"
-                            style={{ width: `${progressPercent}%` }}
-                        />
+                )}
+                
+                {/* 段階的プリフェッチ進捗 */}
+                {!isPrefetching && prefetchProgress > 0 && prefetchProgress < 100 && (
+                    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-green-100 border border-green-300 rounded-full px-4 py-2 shadow-lg flex items-center space-x-2">
+                        <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-sm font-medium text-green-700">音声を追加中... {prefetchProgress}%</span>
                     </div>
-                </div>
-                {/* くぅーボタン */}
-                <div className="relative">
-                    <button
-                        className={`relative w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 rounded-full bg-gradient-to-r from-orange-500 to-rose-400 text-white text-2xl sm:text-3xl md:text-4xl font-extrabold shadow-2xl flex items-center justify-center active:scale-90 transition-all duration-150 ${isBouncing ? styles['animate-bounce-kuu'] : ''} ${(isProcessing || isPlayingAudio || isPrefetching) ? 'opacity-80 cursor-not-allowed' : 'hover:scale-105'}`}
-                        onClick={handleClickBounce}
-                        disabled={isProcessing || isPlayingAudio || isPrefetching}
-                        style={{ touchAction: 'manipulation', position: 'relative', zIndex: 30 }}
-                    >
-                        {/* 波紋エフェクト */}
-                        {isRipple && (
-                            <span className={styles.ripple} />
+                )}
+                <section className="relative z-10 flex flex-col items-center w-full max-w-md px-4 py-6 sm:py-8">
+                    <h2 className="text-2xl sm:text-3xl font-extrabold text-orange-900 mb-4 sm:mb-6 text-center drop-shadow">さぁ、くぅーしよう！</h2>
+                    {/* 進捗バー */}
+                    <div className="w-full mb-4 sm:mb-6">
+                        <div className="flex justify-between text-xs font-bold text-orange-700 mb-1">
+                            <span>レベル {level}</span>
+                            <span>あと {nextLevel} くぅー！</span>
+                        </div>
+                        <div className="w-full h-3 sm:h-4 bg-orange-100 rounded-full overflow-hidden shadow-inner">
+                            <div
+                                className="h-full bg-gradient-to-r from-orange-400 to-rose-400 transition-all duration-500"
+                                style={{ width: `${progressPercent}%` }}
+                            />
+                        </div>
+                    </div>
+                    {/* くぅーボタン */}
+                    <div className="relative">
+                        <button
+                            className={`relative w-32 h-32 sm:w-40 sm:h-40 md:w-48 md:h-48 rounded-full bg-gradient-to-r from-orange-500 to-rose-400 text-white text-2xl sm:text-3xl md:text-4xl font-extrabold shadow-2xl flex items-center justify-center active:scale-90 transition-all duration-150 ${isBouncing ? styles['animate-bounce-kuu'] : ''} ${(isProcessing || isPlayingAudio || isPrefetching) ? 'opacity-80 cursor-not-allowed' : 'hover:scale-105'}`}
+                            onClick={handleClickBounce}
+                            disabled={isProcessing || isPlayingAudio || isPrefetching}
+                            style={{ touchAction: 'manipulation', position: 'relative', zIndex: 30 }}
+                        >
+                            {/* 波紋エフェクト */}
+                            {isRipple && (
+                                <span className={styles.ripple} />
+                            )}
+                            {isPrefetching ? (
+                              <div className="flex flex-col items-center justify-center space-y-2">
+                                <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
+                                <div className="text-xs font-medium">音声読み込み中...</div>
+                              </div>
+                            ) : (isProcessing || isPlayingAudio) ? (
+                              <div className="flex items-center justify-center space-x-1 h-8">
+                                {[...Array(5)].map((_, i) => (
+                                  <span
+                                    key={i}
+                                    className="inline-block w-1 bg-white rounded"
+                                    style={{
+                                      height: '16px',
+                                      animation: `equalizerBar 1s ${i * 0.1}s infinite ease-in-out alternate`
+                                    }}
+                                  />
+                                ))}
+                                <style jsx>{`
+                                  @keyframes equalizerBar {
+                                    0% { height: 8px; }
+                                    50% { height: 28px; }
+                                    100% { height: 8px; }
+                                  }
+                                `}</style>
+                              </div>
+                            ) : sounds.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center space-y-1">
+                                <div className="text-lg">🎵</div>
+                                <div className="text-xs font-medium text-center">音声がありません</div>
+                              </div>
+                            ) : kuuText}
+                        </button>
+                        
+                        {/* 音声再生中のインジケーター */}
+                        {isPlayingAudio && (
+                            <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-5 h-5 sm:w-6 sm:h-6 bg-gradient-to-r from-pink-500 to-purple-500 rounded-full flex items-center justify-center animate-pulse shadow-lg">
+                                <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.369 4.369 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z"/>
+                                </svg>
+                            </div>
                         )}
-                        {isPrefetching ? (
-                          <div className="flex flex-col items-center justify-center space-y-2">
-                            <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
-                            <div className="text-xs font-medium">音声読み込み中...</div>
-                          </div>
-                        ) : (isProcessing || isPlayingAudio) ? (
-                          <div className="flex items-center justify-center space-x-1 h-8">
-                            {[...Array(5)].map((_, i) => (
-                              <span
-                                key={i}
-                                className="inline-block w-1 bg-white rounded"
-                                style={{
-                                  height: '16px',
-                                  animation: `equalizerBar 1s ${i * 0.1}s infinite ease-in-out alternate`
-                                }}
-                              />
-                            ))}
-                            <style jsx>{`
-                              @keyframes equalizerBar {
-                                0% { height: 8px; }
-                                50% { height: 28px; }
-                                100% { height: 8px; }
-                              }
-                            `}</style>
-                          </div>
-                        ) : sounds.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center space-y-1">
-                            <div className="text-lg">🎵</div>
-                            <div className="text-xs font-medium text-center">音声がありません</div>
-                          </div>
-                        ) : kuuText}
-                    </button>
-                    
-                    {/* 音声再生中のインジケーター */}
-                    {isPlayingAudio && (
-                        <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-5 h-5 sm:w-6 sm:h-6 bg-gradient-to-r from-pink-500 to-purple-500 rounded-full flex items-center justify-center animate-pulse shadow-lg">
-                            <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.369 4.369 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z"/>
-                            </svg>
+                    </div>
+                    {/* 再生中の表示パターン */}
+                    {isPlayingAudio && currentPlayingSound && (
+                      <div className="flex flex-col items-center mb-3 sm:mb-4">
+                        <span className="text-xs text-orange-500 font-semibold tracking-widest mb-1 flex items-center gap-1">
+                          <span className="text-lg">👤</span>{currentPlayingSound.userName}
+                        </span>
+                        <span className="text-lg font-bold text-orange-700 bg-orange-50 rounded-full px-4 py-2 shadow border border-orange-200">
+                          「{currentPlayingSound.name}」
+                        </span>
+                      </div>
+                    )}
+                    {/* カウント・称号など */}
+                    <div className="text-center mt-4 sm:mt-6">
+                        <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-pink-600 mb-3 sm:mb-4 animate-bounce">
+                            {currentPlayingText}
+                        </div>
+                        <div className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-700 mb-1 sm:mb-2">
+                            レベル {level}
+                        </div>
+                        <div className="text-sm sm:text-base md:text-lg text-gray-600 mb-2 sm:mb-4">
+                            {title}
+                        </div>
+                        <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-pink-400 mb-4 sm:mb-6">
+                            {count}
+                        </div>
+                    </div>
+                    {/* ランキングセクション */}
+                    <div className="bg-orange-50 p-3 sm:p-4 md:p-6 rounded-2xl shadow-inner border border-orange-200 mt-6 sm:mt-8 w-full">
+                        <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-orange-800 text-center mb-3 sm:mb-5">くぅーランキング</h3>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-orange-200">
+                                <thead className="bg-orange-100">
+                                    <tr>
+                                        <th className="px-2 sm:px-3 py-1 sm:py-2 text-left text-xs font-medium text-orange-600 uppercase tracking-wider rounded-tl-xl">順位</th>
+                                        <th className="px-2 sm:px-3 py-1 sm:py-2 text-left text-xs font-medium text-orange-600 uppercase tracking-wider">ユーザー</th>
+                                        <th className="px-2 sm:px-3 py-1 sm:py-2 text-left text-xs font-medium text-orange-600 uppercase tracking-wider">レベル</th>
+                                        <th className="px-2 sm:px-3 py-1 sm:py-2 text-left text-xs font-medium text-orange-600 uppercase tracking-wider">称号</th>
+                                        <th className="px-2 sm:px-3 py-1 sm:py-2 text-left text-xs font-medium text-orange-600 uppercase tracking-wider rounded-tr-xl">くぅー数</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-orange-100">
+                                    {rankingList.map((rank, index) => (
+                                        <tr key={index} className={index % 2 === 0 ? "bg-orange-50" : "bg-white"}>
+                                            <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-900">
+                                                {index === 0 ? <span className="text-lg sm:text-xl md:text-2xl">🥇</span> : index === 1 ? <span className="text-lg sm:text-xl md:text-2xl">🥈</span> : index === 2 ? <span className="text-lg sm:text-xl md:text-2xl">🥉</span> : rank.rank}
+                                            </td>
+                                            <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-700 font-bold flex items-center gap-1 sm:gap-2">
+                                                {index === 0 && <span className="text-yellow-400 text-sm sm:text-lg md:text-xl">👑</span>}
+                                                <span className="truncate max-w-16 sm:max-w-20 md:max-w-24">{rank.userName}</span>
+                                            </td>
+                                            <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-700">{rank.level}</td>
+                                            <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-normal break-words text-xs sm:text-sm text-gray-700">
+                                                <span className="block max-w-32 sm:max-w-48 md:max-w-64">{rank.title}</span>
+                                            </td>
+                                            <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-700">{rank.kuuCount.toLocaleString()}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* 音声がない場合のメッセージ */}
+                    {!isPrefetching && sounds.length === 0 && (
+                        <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-center">
+                            <div className="text-2xl mb-2">🎵</div>
+                            <div className="text-sm text-yellow-700 font-medium mb-2">音声が登録されていません</div>
+                            <div className="text-xs text-yellow-600">
+                                誰かが音声を登録するまでお待ちください
+                            </div>
                         </div>
                     )}
-                </div>
-                {/* 再生中の表示パターン */}
-                {isPlayingAudio && currentPlayingSound && (
-                  <div className="flex flex-col items-center mb-3 sm:mb-4">
-                    <span className="text-xs text-orange-500 font-semibold tracking-widest mb-1 flex items-center gap-1">
-                      <span className="text-lg">👤</span>{currentPlayingSound.userName}
-                    </span>
-                    <span className="text-lg font-bold text-orange-700 bg-orange-50 rounded-full px-4 py-2 shadow border border-orange-200">
-                      「{currentPlayingSound.name}」
-                    </span>
-                  </div>
-                )}
-                {/* カウント・称号など */}
-                <div className="text-center mt-4 sm:mt-6">
-                    <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-pink-600 mb-3 sm:mb-4 animate-bounce">
-                        {currentPlayingText}
-                    </div>
-                    <div className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-700 mb-1 sm:mb-2">
-                        レベル {level}
-                    </div>
-                    <div className="text-sm sm:text-base md:text-lg text-gray-600 mb-2 sm:mb-4">
-                        {title}
-                    </div>
-                    <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-pink-400 mb-4 sm:mb-6">
-                        {count}
-                    </div>
-                </div>
-                {/* ランキングセクション */}
-                <div className="bg-orange-50 p-3 sm:p-4 md:p-6 rounded-2xl shadow-inner border border-orange-200 mt-6 sm:mt-8 w-full">
-                    <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-orange-800 text-center mb-3 sm:mb-5">くぅーランキング</h3>
-                    <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-orange-200">
-                            <thead className="bg-orange-100">
-                                <tr>
-                                    <th className="px-2 sm:px-3 py-1 sm:py-2 text-left text-xs font-medium text-orange-600 uppercase tracking-wider rounded-tl-xl">順位</th>
-                                    <th className="px-2 sm:px-3 py-1 sm:py-2 text-left text-xs font-medium text-orange-600 uppercase tracking-wider">ユーザー</th>
-                                    <th className="px-2 sm:px-3 py-1 sm:py-2 text-left text-xs font-medium text-orange-600 uppercase tracking-wider">レベル</th>
-                                    <th className="px-2 sm:px-3 py-1 sm:py-2 text-left text-xs font-medium text-orange-600 uppercase tracking-wider">称号</th>
-                                    <th className="px-2 sm:px-3 py-1 sm:py-2 text-left text-xs font-medium text-orange-600 uppercase tracking-wider rounded-tr-xl">くぅー数</th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-orange-100">
-                                {rankingList.map((rank, index) => (
-                                    <tr key={index} className={index % 2 === 0 ? "bg-orange-50" : "bg-white"}>
-                                        <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-900">
-                                            {index === 0 ? <span className="text-lg sm:text-xl md:text-2xl">🥇</span> : index === 1 ? <span className="text-lg sm:text-xl md:text-2xl">🥈</span> : index === 2 ? <span className="text-lg sm:text-xl md:text-2xl">🥉</span> : rank.rank}
-                                        </td>
-                                        <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-700 font-bold flex items-center gap-1 sm:gap-2">
-                                            {index === 0 && <span className="text-yellow-400 text-sm sm:text-lg md:text-xl">👑</span>}
-                                            <span className="truncate max-w-16 sm:max-w-20 md:max-w-24">{rank.userName}</span>
-                                        </td>
-                                        <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-700">{rank.level}</td>
-                                        <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-normal break-words text-xs sm:text-sm text-gray-700">
-                                            <span className="block max-w-32 sm:max-w-48 md:max-w-64">{rank.title}</span>
-                                        </td>
-                                        <td className="px-2 sm:px-3 py-2 sm:py-3 whitespace-nowrap text-xs sm:text-sm text-gray-700">{rank.kuuCount.toLocaleString()}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                {/* 音声がない場合のメッセージ */}
-                {!isPrefetching && sounds.length === 0 && (
-                    <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-center">
-                        <div className="text-2xl mb-2">🎵</div>
-                        <div className="text-sm text-yellow-700 font-medium mb-2">音声が登録されていません</div>
-                        <div className="text-xs text-yellow-600">
-                            誰かが音声を登録するまでお待ちください
-                        </div>
-                    </div>
-                )}
-            </section>
-        </main>
+                </section>
+            </main>
+        </KuuGate>
     );
 }

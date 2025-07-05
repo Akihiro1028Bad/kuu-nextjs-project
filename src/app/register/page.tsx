@@ -201,8 +201,8 @@ export default function RegisterPage() {
             <Modal
                 show={showModal}
                 okRedirectPath="/login"
-                title="登録完了！"
-                message="ログイン画面へ移動します。"
+                title="🎉 登録完了！"
+                message="くぅーファミリーにようこそ！ログイン画面へ移動します。"
                 showKuuEffect={true}
             />
         </main>
