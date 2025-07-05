@@ -2,7 +2,8 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import axios from 'axios';
-import fixWebmDuration from 'webm-duration-fix';
+import * as vad from '@ricky0123/vad-web';
+import Modal from './Modal';
 
 interface AudioRecorderProps {
   onUploadSuccess: () => void;
@@ -19,6 +20,14 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
   const [soundName, setSoundName] = useState('');
   const [isSupported, setIsSupported] = useState<boolean | null>(null);
   const [volumeLevel, setVolumeLevel] = useState(0);
+  const [isVoiceDetected, setIsVoiceDetected] = useState(false);
+  const [voiceDetectionStatus, setVoiceDetectionStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  
+  // モーダル状態
+  const [showModal, setShowModal] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalType, setModalType] = useState<'success' | 'error' | 'info'>('info');
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -26,8 +35,298 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
   const chunksRef = useRef<Blob[]>([]);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const voiceDetectionRef = useRef<vad.MicVAD | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   const MAX_RECORDING_TIME = 30; // 最大30秒
+
+  // モーダル表示用ヘルパー関数
+  const showSuccessModal = useCallback((title: string, message: string) => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType('success');
+    setShowModal(true);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setShowModal(false);
+  }, []);
+
+  // Float32ArrayをWAVファイルに変換する関数（修正版）
+  const convertFloat32ArrayToWav = (audioData: Float32Array, sampleRate: number): Blob => {
+    console.log('WAV変換開始:', { 
+      audioDataLength: audioData.length, 
+      sampleRate, 
+      duration: audioData.length / sampleRate 
+    });
+
+    const numChannels = 1; // モノラル
+    const bitsPerSample = 16;
+    const bytesPerSample = bitsPerSample / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = audioData.length * bytesPerSample;
+    const fileSize = 36 + dataSize;
+
+    console.log('WAVヘッダー情報:', {
+      dataSize,
+      fileSize,
+      byteRate,
+      blockAlign
+    });
+
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    // WAVヘッダー（修正版）
+    // RIFF identifier
+    view.setUint8(0, 0x52); // R
+    view.setUint8(1, 0x49); // I
+    view.setUint8(2, 0x46); // F
+    view.setUint8(3, 0x46); // F
+
+    // File size (little endian)
+    view.setUint32(4, fileSize, true);
+
+    // WAVE identifier
+    view.setUint8(8, 0x57); // W
+    view.setUint8(9, 0x41); // A
+    view.setUint8(10, 0x56); // V
+    view.setUint8(11, 0x45); // E
+
+    // fmt chunk
+    view.setUint8(12, 0x66); // f
+    view.setUint8(13, 0x6D); // m
+    view.setUint8(14, 0x74); // t
+    view.setUint8(15, 0x20); // space
+
+    // fmt chunk size (16 for PCM)
+    view.setUint32(16, 16, true);
+
+    // Audio format (1 for PCM)
+    view.setUint16(20, 1, true);
+
+    // Number of channels
+    view.setUint16(22, numChannels, true);
+
+    // Sample rate
+    view.setUint32(24, sampleRate, true);
+
+    // Byte rate
+    view.setUint32(28, byteRate, true);
+
+    // Block align
+    view.setUint16(32, blockAlign, true);
+
+    // Bits per sample
+    view.setUint16(34, bitsPerSample, true);
+
+    // data chunk
+    view.setUint8(36, 0x64); // d
+    view.setUint8(37, 0x61); // a
+    view.setUint8(38, 0x74); // t
+    view.setUint8(39, 0x61); // a
+
+    // data chunk size
+    view.setUint32(40, dataSize, true);
+
+    // Audio data
+    let offset = 44;
+    let maxSample = 0;
+    let minSample = 0;
+    
+    for (let i = 0; i < audioData.length; i++) {
+      const sample = Math.max(-1, Math.min(1, audioData[i]));
+      const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      view.setInt16(offset, intSample, true);
+      offset += 2;
+      
+      // デバッグ用：最大・最小値を記録
+      if (sample > maxSample) maxSample = sample;
+      if (sample < minSample) minSample = sample;
+    }
+
+    console.log('WAV変換完了:', {
+      maxSample,
+      minSample,
+      bufferSize: buffer.byteLength,
+      expectedSize: 44 + dataSize
+    });
+
+    return new Blob([buffer], { type: 'audio/wav' });
+  };
+
+  // 代替の音声変換関数（WebM形式）
+  const convertFloat32ArrayToWebM = async (audioData: Float32Array, sampleRate: number): Promise<Blob> => {
+    console.log('WebM変換開始');
+    
+    try {
+      // AudioContextを作成
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      
+      // Float32ArrayをAudioBufferに変換
+      const audioBuffer = audioContext.createBuffer(1, audioData.length, sampleRate);
+      audioBuffer.getChannelData(0).set(audioData);
+      
+      // AudioBufferをBlobに変換
+      const mediaStreamDestination = audioContext.createMediaStreamDestination();
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(mediaStreamDestination);
+      source.start();
+      
+      // MediaRecorderでWebMに変換
+      const mediaRecorder = new MediaRecorder(mediaStreamDestination.stream, {
+        mimeType: 'audio/webm;codecs=opus'
+      });
+      
+      const chunks: Blob[] = [];
+      
+      return new Promise((resolve, reject) => {
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            chunks.push(event.data);
+          }
+        };
+        
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(chunks, { type: 'audio/webm' });
+          console.log('WebM変換完了:', { size: blob.size });
+          resolve(blob);
+        };
+        
+        mediaRecorder.onerror = reject;
+        
+        mediaRecorder.start();
+        setTimeout(() => {
+          mediaRecorder.stop();
+          audioContext.close();
+        }, 100);
+      });
+    } catch (error) {
+      console.error('WebM変換エラー:', error);
+      throw error;
+    }
+  };
+
+  // 自動音声検出の初期化（基本設定）
+  useEffect(() => {
+    const initVoiceDetection = async () => {
+      try {
+        setVoiceDetectionStatus('loading');
+        
+        // 自動音声検出の初期化（より安定した設定）
+        voiceDetectionRef.current = await vad.MicVAD.new({
+          onSpeechStart: () => {
+            console.log('音声検出開始');
+            setIsVoiceDetected(true);
+          },
+          onSpeechEnd: async (audio) => {
+            console.log('音声検出終了');
+            setIsVoiceDetected(false);
+            
+            // 音声が検出された場合のみ録音データを保存
+            if (audio && audio.length > 0) {
+              console.log('VAD音声データ詳細:', {
+                length: audio.length,
+                type: audio.constructor.name,
+                sampleRate: 16000,
+                duration: audio.length / 16000,
+                firstFewSamples: Array.from(audio.slice(0, 10)),
+                lastFewSamples: Array.from(audio.slice(-10))
+              });
+
+              // 最小音声長をチェック（騒音環境対応：1.0秒以上）
+              const minDuration = 1.0; // 秒（騒音環境では長めに）
+              const minSamples = minDuration * 16000; // サンプル数
+              
+              if (audio.length >= minSamples) {
+                try {
+                  // まずWAV形式を試す
+                  console.log('WAV形式で変換を試行...');
+                  const wavBlob = convertFloat32ArrayToWav(audio, 16000);
+                  
+                  console.log('WAV Blob詳細:', {
+                    size: wavBlob.size,
+                    type: wavBlob.type
+                  });
+
+                  setAudioBlob(wavBlob);
+                  setAudioUrl(URL.createObjectURL(wavBlob));
+                  console.log('WAV形式で音声録音完了:', audio.length, 'サンプル');
+                  
+                } catch (wavError) {
+                  console.error('WAV変換エラー:', wavError);
+                  
+                  // WAVが失敗した場合はWebM形式を試す
+                  try {
+                    console.log('WebM形式で変換を試行...');
+                    const webmBlob = await convertFloat32ArrayToWebM(audio, 16000);
+                    
+                    console.log('WebM Blob詳細:', {
+                      size: webmBlob.size,
+                      type: webmBlob.type
+                    });
+
+                    setAudioBlob(webmBlob);
+                    setAudioUrl(URL.createObjectURL(webmBlob));
+                    console.log('WebM形式で音声録音完了:', audio.length, 'サンプル');
+                    
+                  } catch (webmError) {
+                    console.error('WebM変換エラー:', webmError);
+                    
+                    // 最後の手段：生データをBlobとして保存
+                    console.log('生データ形式で保存...');
+                    const fallbackBlob = new Blob([audio], { type: 'audio/raw' });
+                    setAudioBlob(fallbackBlob);
+                    setAudioUrl(URL.createObjectURL(fallbackBlob));
+                    console.log('生データ形式で音声録音完了:', audio.length, 'サンプル');
+                  }
+                }
+              } else {
+                console.log('音声が短すぎます:', audio.length, 'サンプル');
+              }
+            }
+          },
+          onVADMisfire: () => {
+            console.log('VAD誤検出');
+            setIsVoiceDetected(false);
+          },
+          onFrameProcessed: (probabilities, frame) => {
+            // フレーム処理のログ（デバッグ用）
+            console.log('VAD確率:', probabilities);
+          },
+          // VADの感度を調整（騒音環境対応）
+          minSpeechFrames: 5, // 最小音声フレーム数（騒音環境では長めに）
+          frameSamples: 1024, // フレームあたりのサンプル数（デフォルト: 1024）
+          positiveSpeechThreshold: 0.7, // 音声判定の閾値（騒音環境では高めに）
+          negativeSpeechThreshold: 0.3, // 非音声判定の閾値（騒音環境では低めに）
+          redemptionFrames: 12, // 誤検出修正フレーム数（騒音環境では長めに）
+          preSpeechPadFrames: 2 // 音声開始前のパディング（騒音環境では多めに）
+        });
+
+        setVoiceDetectionStatus('ready');
+        console.log('自動音声検出初期化完了');
+      } catch (error) {
+        console.error('自動音声検出初期化エラー:', error);
+        setVoiceDetectionStatus('error');
+      }
+    };
+
+    initVoiceDetection();
+
+    return () => {
+      if (voiceDetectionRef.current) {
+        try {
+          voiceDetectionRef.current.destroy();
+        } catch (error) {
+          console.error('自動音声検出破棄エラー:', error);
+        }
+      }
+    };
+  }, []);
+
+
 
   // ブラウザの録音機能サポートチェック
   useEffect(() => {
@@ -74,6 +373,13 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl);
       }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        try {
+          audioContextRef.current.close();
+        } catch (error) {
+          console.error('AudioContext閉じるエラー:', error);
+        }
+      }
     };
   }, [audioUrl]);
 
@@ -82,187 +388,77 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
     if (!analyserRef.current) return;
     const dataArray = new Uint8Array(analyserRef.current.fftSize);
     analyserRef.current.getByteTimeDomainData(dataArray);
-    // デバッグ: 波形データの一部を出力
-    console.log('波形データサンプル:', dataArray.slice(0, 16));
+    
     let sum = 0;
     for (let i = 0; i < dataArray.length; i++) {
       const normalized = (dataArray[i] - 128) / 128;
       sum += normalized * normalized;
     }
-    const rms = Math.sqrt(sum / dataArray.length); // Root Mean Square（実効値）
-    setVolumeLevel(rms * 100); // 0〜100で表示
+    const rms = Math.sqrt(sum / dataArray.length);
+    setVolumeLevel(rms * 100);
+    
     if (isRecording) {
       animationFrameRef.current = requestAnimationFrame(measureVolume);
     }
   }, [isRecording]);
 
-  // 録音開始
+  // 自動音声検出録音開始
   const startRecording = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      // デバッグ: マイクデバイス情報
-      if (navigator.mediaDevices.enumerateDevices) {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        console.log('利用可能なデバイス:', devices);
+      if (voiceDetectionStatus !== 'ready') {
+        alert('音声検出システムの準備が完了していません。しばらく待ってから再試行してください。');
+        return;
       }
-      // 音量レベル測定のためのAudioContext設定
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 16000,
+          // 騒音環境対応の追加設定
+          channelCount: 1 // モノラル録音
+        } 
+      });
+      
+      streamRef.current = stream;
+
+      // AudioContext設定（音量測定用）
+      let audioContext: AudioContext;
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContext = audioContextRef.current;
+      } else {
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioContextRef.current = audioContext;
+      }
+      
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
       source.connect(analyser);
       analyserRef.current = analyser;
-      console.log('AudioContext/Analyser/Source接続:', { audioContext, source, analyser });
-      
-      // サポートされているMIMEタイプを取得
-      const supportedType = 'audio/webm';
-      if (!MediaRecorder.isTypeSupported(supportedType)) {
-        alert('このブラウザはaudio/webmの録音に対応していません');
-        setIsSupported(false);
-        return;
+
+      // 自動音声検出を開始
+      if (voiceDetectionRef.current) {
+        voiceDetectionRef.current.start();
+        console.log('自動音声検出録音開始');
       }
-      
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: supportedType });
-      mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: supportedType });
-        // 録音時間を取得
-        const duration = recordingTime;
-        // webm-duration-fixでdurationを埋め込む
-        const fixedBlob = await fixWebmDuration(blob);
-
-        // === 無音トリム処理を追加 ===
-        // Blob → ArrayBuffer → AudioBuffer
-        const arrayBuffer = await fixedBlob.arrayBuffer();
-        // decodeAudioDataはコールバック形式だが、Promiseラップでasync/await対応
-        function decodeAudioDataAsync(ctx: AudioContext, ab: ArrayBuffer): Promise<AudioBuffer> {
-          return new Promise((resolve, reject) => {
-            ctx.decodeAudioData(ab, resolve, reject);
-          });
-        }
-        const audioBuffer = await decodeAudioDataAsync(audioContext, arrayBuffer.slice(0));
-
-        // 無音判定用の閾値
-        const SILENCE_THRESHOLD = 0.005; // 0.0〜1.0（より小さく）
-        const MIN_SILENCE_DURATION = 0.05; // 50ms相当
-        const sampleRate = audioBuffer.sampleRate;
-        const channelData = audioBuffer.getChannelData(0); // モノラル前提
-        const length = channelData.length;
-        const minSilenceSamples = Math.floor(sampleRate * MIN_SILENCE_DURATION);
-
-        // 前方の無音区間を検出
-        let startSample = 0;
-        for (let i = 0; i < length; i++) {
-          if (Math.abs(channelData[i]) > SILENCE_THRESHOLD) {
-            // 直前まで無音が続いていた場合のみ
-            startSample = Math.max(0, i - minSilenceSamples);
-            break;
-          }
-        }
-        // 後方の無音区間を検出
-        let endSample = length - 1;
-        for (let i = length - 1; i >= 0; i--) {
-          if (Math.abs(channelData[i]) > SILENCE_THRESHOLD) {
-            endSample = Math.min(length - 1, i + minSilenceSamples);
-            break;
-          }
-        }
-        // 切り出し範囲が不正なら全体を使う
-        if (endSample <= startSample) {
-          startSample = 0;
-          endSample = length - 1;
-        }
-        const trimmedLength = endSample - startSample + 1;
-        // 新しいAudioBufferを作成
-        const trimmedBuffer = audioContext.createBuffer(
-          audioBuffer.numberOfChannels,
-          trimmedLength,
-          sampleRate
-        );
-        for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
-          const src = audioBuffer.getChannelData(ch);
-          const dst = trimmedBuffer.getChannelData(ch);
-          for (let i = 0; i < trimmedLength; i++) {
-            dst[i] = src[startSample + i];
-          }
-        }
-        // AudioBuffer → WAV Blob 変換関数
-        function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
-          // 簡易WAVエンコーダ
-          const numOfChan = buffer.numberOfChannels;
-          const length = buffer.length * numOfChan * 2 + 44;
-          const bufferArray = new ArrayBuffer(length);
-          const view = new DataView(bufferArray);
-          // RIFF identifier 'RIFF'
-          writeString(view, 0, 'RIFF');
-          view.setUint32(4, 36 + buffer.length * numOfChan * 2, true);
-          writeString(view, 8, 'WAVE');
-          // fmt chunk
-          writeString(view, 12, 'fmt ');
-          view.setUint32(16, 16, true); // chunk size
-          view.setUint16(20, 1, true); // PCM
-          view.setUint16(22, numOfChan, true);
-          view.setUint32(24, buffer.sampleRate, true);
-          view.setUint32(28, buffer.sampleRate * numOfChan * 2, true);
-          view.setUint16(32, numOfChan * 2, true);
-          view.setUint16(34, 16, true); // bits per sample
-          // data chunk
-          writeString(view, 36, 'data');
-          view.setUint32(40, buffer.length * numOfChan * 2, true);
-          // PCM samples
-          let offset = 44;
-          for (let i = 0; i < buffer.length; i++) {
-            for (let ch = 0; ch < numOfChan; ch++) {
-              let sample = buffer.getChannelData(ch)[i];
-              sample = Math.max(-1, Math.min(1, sample));
-              view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-              offset += 2;
-            }
-          }
-          return new Blob([bufferArray], { type: 'audio/wav' });
-        }
-        function writeString(view: DataView, offset: number, str: string) {
-          for (let i = 0; i < str.length; i++) {
-            view.setUint8(offset + i, str.charCodeAt(i));
-          }
-        }
-        // トリム後のWAV Blobを生成
-        const trimmedWavBlob = audioBufferToWavBlob(trimmedBuffer);
-        setAudioBlob(trimmedWavBlob);
-        const url = URL.createObjectURL(trimmedWavBlob);
-        setAudioUrl(url);
-        // 音量測定を停止
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-          animationFrameRef.current = null;
-        }
-        setVolumeLevel(0);
-      };
-
-      mediaRecorder.start();
       setIsRecording(true);
       setIsPaused(false);
       setRecordingTime(0);
+      setAudioBlob(null);
+      setAudioUrl('');
+      chunksRef.current = [];
 
-      // 録音時間のカウント
+      // タイマー開始
       timerRef.current = setInterval(() => {
         setRecordingTime(prev => {
-          const newTime = prev + 1;
-          // 最大録音時間に達したら自動停止
-          if (newTime >= MAX_RECORDING_TIME) {
+          if (prev >= MAX_RECORDING_TIME) {
             stopRecording();
             return prev;
           }
-          return newTime;
+          return prev + 1;
         });
       }, 1000);
 
@@ -270,255 +466,344 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
       measureVolume();
 
     } catch (error) {
-      console.error('録音の開始に失敗しました:', error);
-      alert('マイクへのアクセスが許可されていません。ブラウザの設定を確認してください。');
+      console.error('VAD録音開始エラー:', error);
+      alert('録音を開始できませんでした。マイクの権限を確認してください。');
     }
-  }, [measureVolume]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceDetectionStatus, measureVolume]);
 
-  // 録音停止
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      setIsPaused(false);
-      
+  // 自動音声検出録音停止
+  const stopRecording = useCallback(async () => {
+    try {
+      if (voiceDetectionRef.current) {
+        voiceDetectionRef.current.pause();
+        console.log('自動音声検出録音停止');
+      }
+
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
 
-      // 音量測定を停止
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
-      setVolumeLevel(0);
 
-      // ストリームを停止
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
       }
+
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        try {
+          await audioContextRef.current.close();
+        } catch (error) {
+          console.error('AudioContext閉じるエラー:', error);
+        }
+        audioContextRef.current = null;
+      }
+
+      setIsRecording(false);
+      setIsPaused(false);
+      setIsVoiceDetected(false);
+
+    } catch (error) {
+      console.error('VAD録音停止エラー:', error);
     }
-  }, [isRecording]);
+  }, []);
 
   // 録音一時停止/再開
   const togglePause = useCallback(() => {
-    if (!mediaRecorderRef.current) return;
-
     if (isPaused) {
-      mediaRecorderRef.current.resume();
       setIsPaused(false);
-      // タイマー再開
-      timerRef.current = setInterval(() => {
-        setRecordingTime(prev => {
-          const newTime = prev + 1;
-          if (newTime >= MAX_RECORDING_TIME) {
-            stopRecording();
-            return prev;
-          }
-          return newTime;
-        });
-      }, 1000);
-      // 音量測定再開
       measureVolume();
     } else {
-      mediaRecorderRef.current.pause();
       setIsPaused(true);
-      // タイマー停止
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      // 音量測定停止
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
     }
-  }, [isPaused, measureVolume, stopRecording]);
+  }, [isPaused, measureVolume]);
 
   // 録音リセット
   const resetRecording = useCallback(() => {
     stopRecording();
+    setRecordingTime(0);
     setAudioBlob(null);
     setAudioUrl('');
-    setRecordingTime(0);
     setSoundName('');
-    setUploadMessage('');
+    setIsVoiceDetected(false);
   }, [stopRecording]);
 
-  // 時間のフォーマット
+    // 音声アップロード
+  const uploadAudio = useCallback(async () => {
+    if (!audioBlob || !soundName.trim()) {
+      alert('音声ファイルとサウンド名を入力してください。');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadMessage('アップロード中...');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', audioBlob, `${soundName}.wav`);
+      formData.append('name', soundName);
+
+      const response = await axios.post('/api/kuu/sounds', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (response.status === 200) {
+        setUploadMessage('アップロード成功！');
+        onUploadSuccess();
+        resetRecording();
+        
+        // アップロード成功モーダル表示
+        showSuccessModal(
+          'アップロード完了',
+          `「${soundName}」の音声が正常にアップロードされました！\nくぅー！`
+        );
+      } else {
+        setUploadMessage('アップロードに失敗しました。');
+      }
+    } catch (error: any) {
+      console.error('アップロードエラー:', error);
+      const errorMessage = error.response?.data?.message || 'アップロードに失敗しました。';
+      setUploadMessage(errorMessage);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [audioBlob, soundName, onUploadSuccess, resetRecording, showSuccessModal]);
+
+  // 音声削除
+  const deleteAudio = useCallback(async (soundId: string) => {
+    try {
+      const response = await axios.delete(`/api/kuu/sounds/${soundId}`);
+      
+      if (response.status === 200) {
+        // 削除成功モーダル表示
+        showSuccessModal(
+          '削除完了',
+          '音声ファイルが正常に削除されました！'
+        );
+        onUploadSuccess(); // リストを更新
+      } else {
+        alert('削除に失敗しました。');
+      }
+    } catch (error: any) {
+      console.error('削除エラー:', error);
+      const errorMessage = error.response?.data?.message || '削除に失敗しました。';
+      alert(errorMessage);
+    }
+  }, [showSuccessModal, onUploadSuccess]);
+
+  // 時間フォーマット
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // ブラウザがサポートされていない場合
   if (isSupported === false) {
     return (
-      <div className="p-4 bg-white rounded-lg shadow-sm border border-orange-200">
-        <h4 className="text-lg font-semibold text-orange-800 mb-4">録音で音声を追加</h4>
-        <div className="text-center py-8">
-          <div className="text-red-500 text-4xl mb-4">🎤</div>
-          <p className="text-orange-700 font-medium mb-2">録音機能がサポートされていません</p>
-          <p className="text-sm text-orange-600">
-            お使いのブラウザでは録音機能が利用できません。<br />
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // サポートチェック中
-  if (isSupported === null) {
-    return (
-      <div className="p-4 bg-white rounded-lg shadow-sm border border-orange-200">
-        <h4 className="text-lg font-semibold text-orange-800 mb-4">録音で音声を追加</h4>
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto"></div>
-          <p className="text-orange-600 mt-2">録音機能を確認中...</p>
+      <div className="max-w-md mx-auto p-6 bg-white rounded-lg shadow-lg">
+        <div className="text-center text-red-600">
+          <p>このブラウザは録音機能に対応していません。</p>
+          <p>Chrome、Firefox、Safariの最新版をご利用ください。</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 bg-white rounded-lg shadow-sm border border-orange-200">
-      <h4 className="text-lg font-semibold text-orange-800 mb-4">録音で音声を追加</h4>
-      
-      <div className="space-y-4">
-        {/* 録音コントロール */}
-        <div className="flex items-center justify-center space-x-4">
-          {!isRecording && !audioBlob && (
+    <div className="max-w-md mx-auto p-6 bg-white rounded-lg shadow-lg">
+      <h2 className="text-2xl font-bold text-center mb-6 text-gray-800">
+        音声録音（自動音声検出対応）
+      </h2>
+
+      {/* 音声検出システムステータス表示 */}
+      <div className="mb-4 p-3 rounded-lg bg-blue-50">
+        <div className="text-sm text-gray-600">
+          <div className="flex items-center justify-between">
+            <span>音声検出システム:</span>
+            <span className={`font-medium ${
+              voiceDetectionStatus === 'ready' ? 'text-green-600' :
+              voiceDetectionStatus === 'loading' ? 'text-yellow-600' :
+              voiceDetectionStatus === 'error' ? 'text-red-600' : 'text-gray-600'
+            }`}>
+              {voiceDetectionStatus === 'ready' ? '準備完了' :
+               voiceDetectionStatus === 'loading' ? '初期化中...' :
+               voiceDetectionStatus === 'error' ? 'エラー' : '待機中'}
+            </span>
+          </div>
+          
+          {/* 音声検出インジケーター */}
+          {isRecording && (
+            <div className="mt-2 flex items-center">
+              <span className="text-sm text-gray-600 mr-2">音声検出:</span>
+              <div className={`w-3 h-3 rounded-full ${
+                isVoiceDetected ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
+              }`}></div>
+              <span className="text-sm text-gray-600 ml-2">
+                {isVoiceDetected ? '検出中' : '待機中'}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 録音時間表示 */}
+      <div className="text-center mb-4">
+        <div className="text-3xl font-mono text-gray-800">
+          {formatTime(recordingTime)}
+        </div>
+        <div className="text-sm text-gray-600">
+          {recordingTime >= MAX_RECORDING_TIME ? '最大録音時間に達しました' : '最大30秒'}
+        </div>
+      </div>
+
+      {/* 音量レベル表示 */}
+      {isRecording && !isPaused && (
+        <div className="mb-4">
+          <div className="flex items-center justify-between text-sm text-gray-600 mb-1">
+            <span>音量レベル</span>
+            <span>{Math.round(volumeLevel)}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="bg-blue-500 h-2 rounded-full transition-all duration-100"
+              style={{ width: `${Math.min(volumeLevel, 100)}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
+
+      {/* 録音コントロール */}
+      {!audioUrl && (
+        <div className="flex justify-center space-x-4 mb-6">
+          {!isRecording ? (
             <button
               onClick={startRecording}
-              className="px-6 py-3 bg-red-500 text-white font-semibold rounded-full hover:bg-red-600 transition-colors flex items-center space-x-2"
+              disabled={voiceDetectionStatus !== 'ready'}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                voiceDetectionStatus !== 'ready'
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-red-500 hover:bg-red-600 text-white'
+              }`}
             >
-              <span className="w-3 h-3 bg-white rounded-full"></span>
-              <span>録音開始</span>
+              録音開始
             </button>
-          )}
-
-          {isRecording && (
+          ) : (
             <>
               <button
                 onClick={togglePause}
-                className="px-4 py-2 bg-yellow-500 text-white font-semibold rounded-lg hover:bg-yellow-600 transition-colors"
+                className="px-6 py-3 rounded-lg font-medium bg-yellow-500 hover:bg-yellow-600 text-white transition-colors"
               >
                 {isPaused ? '再開' : '一時停止'}
               </button>
               <button
                 onClick={stopRecording}
-                className="px-4 py-2 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600 transition-colors"
+                className="px-6 py-3 rounded-lg font-medium bg-red-500 hover:bg-red-600 text-white transition-colors"
               >
                 録音停止
               </button>
             </>
           )}
+        </div>
+      )}
 
-          {audioBlob && (
+      {/* 録音結果表示 */}
+      {audioUrl && (
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold mb-3 text-gray-800">録音結果</h3>
+          <audio controls className="w-full mb-4">
+            <source src={audioUrl} type={audioBlob?.type || 'audio/wav'} />
+            お使いのブラウザは音声再生に対応していません。
+          </audio>
+          
+
+          
+          <div className="mb-4">
+            <label htmlFor="soundName" className="block text-sm font-medium text-gray-700 mb-2">
+              サウンド名
+            </label>
+            <input
+              type="text"
+              id="soundName"
+              value={soundName}
+              onChange={(e) => setSoundName(e.target.value)}
+              placeholder="サウンド名を入力"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="flex space-x-3">
+            <button
+              onClick={uploadAudio}
+              disabled={isUploading || !soundName.trim()}
+              className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+                isUploading || !soundName.trim()
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-green-500 hover:bg-green-600 text-white'
+              }`}
+            >
+              {isUploading ? 'アップロード中...' : 'アップロード'}
+            </button>
             <button
               onClick={resetRecording}
-              className="px-4 py-2 bg-gray-500 text-white font-semibold rounded-lg hover:bg-gray-600 transition-colors"
+              className="px-4 py-2 rounded-lg font-medium bg-gray-500 hover:bg-gray-600 text-white transition-colors"
             >
-              やり直し
+              リセット
             </button>
+          </div>
+
+          {uploadMessage && (
+            <div className={`mt-3 p-3 rounded-lg text-sm ${
+              uploadMessage.includes('成功') 
+                ? 'bg-green-100 text-green-800' 
+                : 'bg-red-100 text-red-800'
+            }`}>
+              {uploadMessage}
+            </div>
           )}
         </div>
+      )}
 
-        {/* 録音時間表示 */}
-        {isRecording && (
-          <div className="text-center">
-            <div className="text-2xl font-bold text-red-600">
-              {formatTime(recordingTime)}
-            </div>
-            <div className="text-sm text-orange-600 mb-2">
-              {isPaused ? '一時停止中' : '録音中...'}
-            </div>
-            
-            {/* 最大録音時間の表示 */}
-            <div className="text-xs text-orange-500 mb-3">
-              最大録音時間: {formatTime(MAX_RECORDING_TIME)}
-            </div>
-            
-            {/* 音量レベル表示 */}
-            <div className="w-full max-w-xs mx-auto">
-              <div className="flex items-center space-x-2 mb-1">
-                <span className="text-xs text-orange-600">音量:</span>
-                <div className="flex-1 bg-orange-100 rounded-full h-2">
-                  <div
-                    className="h-2 rounded-full transition-all duration-100"
-                    style={{
-                      width: `${Math.min(100, (volumeLevel / 100) * 100)}%`,
-                      background: 'linear-gradient(90deg, #f59e42 0%, #f97316 100%)'
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="text-xs text-orange-500">
-                {volumeLevel > 0 ? '🎤 音声を検出中' : '🔇 音声を検出していません'}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 録音プレビュー */}
-        {audioUrl && (
-          <div className="space-y-3">
-            <h5 className="font-medium text-orange-800">録音プレビュー</h5>
-            <audio
-              controls
-              src={audioUrl}
-              className="w-full"
-              onLoadedMetadata={e => console.log('duration:', e.currentTarget.duration)}
-            />
-            <div>
-              <label className="block text-sm font-medium text-orange-700 mb-2">
-                音声の名前
-              </label>
-              <input
-                type="text"
-                value={soundName}
-                onChange={(e) => setSoundName(e.target.value)}
-                placeholder="例：癒やしのくぅー"
-                className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-            {/* 登録（保存）ボタンを復活 */}
-            <button
-              onClick={async () => {
-                if (!audioBlob || !soundName.trim()) return;
-                setIsUploading(true);
-                setUploadMessage('');
-                try {
-                  const formData = new FormData();
-                  formData.append('file', audioBlob, `${soundName}.wav`);
-                  formData.append('name', soundName);
-                  await axios.post('/api/kuu/sounds', formData);
-                  setUploadMessage('録音がアップロードされました！');
-                  resetRecording();
-                  onUploadSuccess();
-                } catch (error: any) {
-                  setUploadMessage(error.response?.data?.message || 'アップロードに失敗しました');
-                } finally {
-                  setIsUploading(false);
-                }
-              }}
-              disabled={isUploading || !soundName.trim()}
-              className="w-full px-4 py-2 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {isUploading ? 'アップロード中...' : '録音を登録'}
-            </button>
-            {uploadMessage && (
-              <p className={`text-sm ${uploadMessage.includes('失敗') ? 'text-red-600' : 'text-green-600'}`}>
-                {uploadMessage}
-              </p>
-            )}
-          </div>
-        )}
+      {/* 使用方法説明 */}
+      <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+        <h4 className="font-semibold text-blue-800 mb-2">使用方法</h4>
+        <ul className="text-sm text-blue-700 space-y-1">
+          <li>• <strong>自動音声検出録音</strong>: 人の声を自動検出して録音</li>
+          <li>• 音声が検出されると自動的に録音が開始されます</li>
+          <li>• 音声が終了すると自動的に録音が停止されます</li>
+          <li>• 録音された音声のみが保存されます（無音部分は除去）</li>
+          <li>• 最大30秒まで録音可能</li>
+        </ul>
+        
+        <div className="mt-4 p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-400">
+          <h5 className="font-semibold text-yellow-800 mb-2">騒音環境での使用</h5>
+          <ul className="text-sm text-yellow-700 space-y-1">
+            <li>• 騒音環境では1秒以上の音声が必要です</li>
+            <li>• 背景音が大きい場合は、マイクに近づいて話してください</li>
+            <li>• 短い音声や背景音は自動的に除外されます</li>
+            <li>• 音声検出の感度を調整済み（騒音対応）</li>
+          </ul>
+        </div>
       </div>
+
+      {/* モーダル */}
+      <Modal
+        show={showModal}
+        title={modalTitle}
+        message={modalMessage}
+        onClose={closeModal}
+        showKuuEffect={modalType === 'success'}
+      />
     </div>
   );
 } 

@@ -4,7 +4,7 @@ import Link from "next/link";
 import FadeIn from "@/components/FadeIn";
 import KuuGate from "@/components/KuuGate";
 import { useAuth } from '@/contexts/AuthContext';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import AudioRecorder from '@/components/AudioRecorder';
 
@@ -20,7 +20,7 @@ export default function MyPage() {
     const [sounds, setSounds] = useState<KuuSound[]>([]);
 
     // 音声ファイル一覧を取得（ログインユーザーのみ）
-    const fetchSounds = async () => {
+    const fetchSounds = useCallback(async () => {
         // ログインしていない場合はAPIを呼ばない
         if (!user) return;
         
@@ -30,11 +30,11 @@ export default function MyPage() {
         } catch (error) {
             console.error('音声ファイルの取得に失敗しました:', error);
         }
-    };
+    }, [user]);
 
     useEffect(() => {
         fetchSounds();
-    }, []);
+    }, [fetchSounds]);
 
     // 音声ファイルの削除
     const handleDelete = async (soundId: number) => {
