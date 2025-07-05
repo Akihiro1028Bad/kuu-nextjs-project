@@ -335,25 +335,6 @@ export default function DocumentPage() {
                             </p>
                         </section>
                     </FadeIn>
-
-                    {/* 音声ファイルの説明 */}
-                    <FadeIn delay={200}>
-                        <section className="section bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 lg:p-8 rounded-xl shadow-lg border border-blue-100 transition-all duration-300 hover:shadow-xl hover:scale-[1.005]">
-                            <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-blue-900 mb-3 sm:mb-4 lg:mb-6 flex items-center">
-                                <span className="text-2xl sm:text-3xl lg:text-4xl mr-2 sm:mr-3 text-blue-600">🎵</span> 
-                                <span className="break-words">音声について</span>
-                            </h2>
-                            <p className="text-sm sm:text-base lg:text-lg leading-relaxed text-blue-800 mb-4">
-                                上記の「発音を聞く」ボタンをクリックすると、実際のユーザーが録音した「くぅー」の音声を再生できます。標準的な「くぅー」の発音をお聞きください。
-                            </p>
-                            <div className="bg-blue-100 rounded-lg p-3">
-                                <p className="text-sm text-blue-700">
-                                    <i className="fas fa-info-circle mr-2"></i>
-                                    音声は固定のファイルを使用しているため、毎回同じ発音が再生されます。
-                                </p>
-                            </div>
-                        </section>
-                    </FadeIn>
                 </div>
             </main>
         </>
