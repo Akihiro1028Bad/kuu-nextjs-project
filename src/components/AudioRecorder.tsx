@@ -21,7 +21,12 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
   const [isSupported, setIsSupported] = useState<boolean | null>(null);
   const [volumeLevel, setVolumeLevel] = useState(0);
   const [isVoiceDetected, setIsVoiceDetected] = useState(false);
-  const [voiceDetectionStatus, setVoiceDetectionStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [voiceDetectionStatus, setVoiceDetectionStatus] = useState<'idle' | 'loading' | 'ready' | 'error' | 'permission-denied'>('idle');
+  
+  // 連続録音用の状態
+  const [isContinuousRecording, setIsContinuousRecording] = useState(false);
+  const [audioSegments, setAudioSegments] = useState<Float32Array[]>([]);
+  const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   
   // モーダル状態
   const [showModal, setShowModal] = useState(false);
@@ -209,11 +214,132 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
     }
   };
 
+  // 音声セグメントを結合する関数
+  const combineAudioSegments = (segments: Float32Array[]): Float32Array => {
+    if (segments.length === 0) return new Float32Array(0);
+    if (segments.length === 1) return segments[0];
+    
+    // 全セグメントの合計長を計算
+    const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0);
+    const combined = new Float32Array(totalLength);
+    
+    let offset = 0;
+    for (const segment of segments) {
+      combined.set(segment, offset);
+      offset += segment.length;
+    }
+    
+    return combined;
+  };
+
+  // 連続録音を開始する関数
+  const startContinuousRecording = useCallback(() => {
+    setIsContinuousRecording(true);
+    setAudioSegments([]);
+    setRecordingStartTime(Date.now());
+    console.log('連続録音開始');
+  }, []);
+
+  // 連続録音を停止する関数
+  const stopContinuousRecording = useCallback(async () => {
+    if (!isContinuousRecording || audioSegments.length === 0) {
+      setIsContinuousRecording(false);
+      setAudioSegments([]);
+      setRecordingStartTime(null);
+      return;
+    }
+    
+    console.log(`連続録音停止: ${audioSegments.length}セグメント`);
+    
+    // セグメントを結合
+    const combinedAudio = combineAudioSegments(audioSegments);
+    console.log('結合後の音声データ:', {
+      length: combinedAudio.length,
+      duration: combinedAudio.length / 16000,
+      segments: audioSegments.length
+    });
+    
+    // 結合した音声を処理
+    try {
+      console.log('WAV形式で変換を試行...');
+      const wavBlob = convertFloat32ArrayToWav(combinedAudio, 16000);
+      
+      console.log('WAV Blob詳細:', {
+        size: wavBlob.size,
+        type: wavBlob.type
+      });
+
+      setAudioBlob(wavBlob);
+      setAudioUrl(URL.createObjectURL(wavBlob));
+      console.log('連続録音完了:', combinedAudio.length, 'サンプル');
+      
+    } catch (wavError) {
+      console.error('WAV変換エラー:', wavError);
+      
+      try {
+        console.log('WebM形式で変換を試行...');
+        const webmBlob = await convertFloat32ArrayToWebM(combinedAudio, 16000);
+        
+        console.log('WebM Blob詳細:', {
+          size: webmBlob.size,
+          type: webmBlob.type
+        });
+
+        setAudioBlob(webmBlob);
+        setAudioUrl(URL.createObjectURL(webmBlob));
+        console.log('連続録音完了（WebM）:', combinedAudio.length, 'サンプル');
+        
+      } catch (webmError) {
+        console.error('WebM変換エラー:', webmError);
+        
+        console.log('生データ形式で保存...');
+        const fallbackBlob = new Blob([combinedAudio], { type: 'audio/raw' });
+        setAudioBlob(fallbackBlob);
+        setAudioUrl(URL.createObjectURL(fallbackBlob));
+        console.log('連続録音完了（生データ）:', combinedAudio.length, 'サンプル');
+      }
+    }
+    
+    // 状態をリセット
+    setIsContinuousRecording(false);
+    setAudioSegments([]);
+    setRecordingStartTime(null);
+  }, [isContinuousRecording, audioSegments, convertFloat32ArrayToWav, convertFloat32ArrayToWebM]);
+
+  // マイク権限をチェックする関数
+  const checkMicrophonePermission = async (): Promise<boolean> => {
+    try {
+      // 既存の権限をチェック
+      const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+      
+      if (permission.state === 'granted') {
+        return true;
+      } else if (permission.state === 'denied') {
+        return false;
+      } else {
+        // 権限が未設定の場合は、一時的にマイクにアクセスして権限を要求
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop());
+        return true;
+      }
+    } catch (error) {
+      console.error('マイク権限チェックエラー:', error);
+      return false;
+    }
+  };
+
   // 自動音声検出の初期化（基本設定）
   useEffect(() => {
     const initVoiceDetection = async () => {
       try {
         setVoiceDetectionStatus('loading');
+        
+        // マイク権限をチェック
+        const hasPermission = await checkMicrophonePermission();
+        if (!hasPermission) {
+          setVoiceDetectionStatus('permission-denied');
+          return;
+        }
         
         // 自動音声検出の初期化（より安定した設定）
         voiceDetectionRef.current = await vad.MicVAD.new({
@@ -236,8 +362,15 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
                 lastFewSamples: Array.from(audio.slice(-10))
               });
 
-              // 最小音声長をチェック（騒音環境対応：1.0秒以上）
-              const minDuration = 1.0; // 秒（騒音環境では長めに）
+              // 連続録音モードの場合はセグメントとして保存
+              if (isContinuousRecording) {
+                console.log('連続録音セグメント追加:', audio.length, 'サンプル');
+                setAudioSegments(prev => [...prev, audio]);
+                return;
+              }
+
+              // 単発録音モード（従来の処理）
+              const minDuration = 0.5; // 秒（短い音声も取得）
               const minSamples = minDuration * 16000; // サンプル数
               
               if (audio.length >= minSamples) {
@@ -296,20 +429,26 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
             // フレーム処理のログ（デバッグ用）
             console.log('VAD確率:', probabilities);
           },
-          // VADの感度を調整（騒音環境対応）
-          minSpeechFrames: 5, // 最小音声フレーム数（騒音環境では長めに）
+          // VADの感度を調整（連続録音対応）
+          minSpeechFrames: 3, // 最小音声フレーム数（連続録音では短めに）
           frameSamples: 1024, // フレームあたりのサンプル数（デフォルト: 1024）
-          positiveSpeechThreshold: 0.7, // 音声判定の閾値（騒音環境では高めに）
-          negativeSpeechThreshold: 0.3, // 非音声判定の閾値（騒音環境では低めに）
-          redemptionFrames: 12, // 誤検出修正フレーム数（騒音環境では長めに）
-          preSpeechPadFrames: 2 // 音声開始前のパディング（騒音環境では多めに）
+          positiveSpeechThreshold: 0.5, // 音声判定の閾値（連続録音では低めに）
+          negativeSpeechThreshold: 0.2, // 非音声判定の閾値（連続録音では低めに）
+          redemptionFrames: 8, // 誤検出修正フレーム数（連続録音では短めに）
+          preSpeechPadFrames: 1 // 音声開始前のパディング（連続録音では少なめに）
         });
 
         setVoiceDetectionStatus('ready');
         console.log('自動音声検出初期化完了');
       } catch (error) {
         console.error('自動音声検出初期化エラー:', error);
-        setVoiceDetectionStatus('error');
+        
+        // 権限エラーの場合は特別な処理
+        if (error instanceof Error && error.name === 'NotAllowedError') {
+          setVoiceDetectionStatus('permission-denied');
+        } else {
+          setVoiceDetectionStatus('error');
+        }
       }
     };
 
@@ -402,10 +541,129 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
     }
   }, [isRecording]);
 
+  // 権限を再要求する関数
+  const requestMicrophonePermission = async (): Promise<boolean> => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+      return true;
+    } catch (error) {
+      console.error('マイク権限要求エラー:', error);
+      return false;
+    }
+  };
+
   // 自動音声検出録音開始
   const startRecording = useCallback(async () => {
+    // 連続録音モードを開始
+    startContinuousRecording();
+    
     try {
-      if (voiceDetectionStatus !== 'ready') {
+      if (voiceDetectionStatus === 'permission-denied') {
+        const granted = await requestMicrophonePermission();
+        if (granted) {
+          // 権限が許可された場合は初期化を再実行
+          setVoiceDetectionStatus('loading');
+          const hasPermission = await checkMicrophonePermission();
+          if (hasPermission) {
+            // VADを再初期化
+            try {
+              voiceDetectionRef.current = await vad.MicVAD.new({
+                onSpeechStart: () => {
+                  console.log('音声検出開始');
+                  setIsVoiceDetected(true);
+                },
+                onSpeechEnd: async (audio) => {
+                  console.log('音声検出終了');
+                  setIsVoiceDetected(false);
+                  
+                  if (audio && audio.length > 0) {
+                    console.log('VAD音声データ詳細:', {
+                      length: audio.length,
+                      type: audio.constructor.name,
+                      sampleRate: 16000,
+                      duration: audio.length / 16000,
+                      firstFewSamples: Array.from(audio.slice(0, 10)),
+                      lastFewSamples: Array.from(audio.slice(-10))
+                    });
+
+                    const minDuration = 1.0;
+                    const minSamples = minDuration * 16000;
+                    
+                    if (audio.length >= minSamples) {
+                      try {
+                        console.log('WAV形式で変換を試行...');
+                        const wavBlob = convertFloat32ArrayToWav(audio, 16000);
+                        
+                        console.log('WAV Blob詳細:', {
+                          size: wavBlob.size,
+                          type: wavBlob.type
+                        });
+
+                        setAudioBlob(wavBlob);
+                        setAudioUrl(URL.createObjectURL(wavBlob));
+                        console.log('WAV形式で音声録音完了:', audio.length, 'サンプル');
+                        
+                      } catch (wavError) {
+                        console.error('WAV変換エラー:', wavError);
+                        
+                        try {
+                          console.log('WebM形式で変換を試行...');
+                          const webmBlob = await convertFloat32ArrayToWebM(audio, 16000);
+                          
+                          console.log('WebM Blob詳細:', {
+                            size: webmBlob.size,
+                            type: webmBlob.type
+                          });
+
+                          setAudioBlob(webmBlob);
+                          setAudioUrl(URL.createObjectURL(webmBlob));
+                          console.log('WebM形式で音声録音完了:', audio.length, 'サンプル');
+                          
+                        } catch (webmError) {
+                          console.error('WebM変換エラー:', webmError);
+                          
+                          console.log('生データ形式で保存...');
+                          const fallbackBlob = new Blob([audio], { type: 'audio/raw' });
+                          setAudioBlob(fallbackBlob);
+                          setAudioUrl(URL.createObjectURL(fallbackBlob));
+                          console.log('生データ形式で音声録音完了:', audio.length, 'サンプル');
+                        }
+                      }
+                    } else {
+                      console.log('音声が短すぎます:', audio.length, 'サンプル');
+                    }
+                  }
+                },
+                onVADMisfire: () => {
+                  console.log('VAD誤検出');
+                  setIsVoiceDetected(false);
+                },
+                onFrameProcessed: (probabilities, frame) => {
+                  console.log('VAD確率:', probabilities);
+                },
+                minSpeechFrames: 5,
+                frameSamples: 1024,
+                positiveSpeechThreshold: 0.7,
+                negativeSpeechThreshold: 0.3,
+                redemptionFrames: 12,
+                preSpeechPadFrames: 2
+              });
+              setVoiceDetectionStatus('ready');
+            } catch (error) {
+              console.error('VAD再初期化エラー:', error);
+              setVoiceDetectionStatus('error');
+              return;
+            }
+          } else {
+            setVoiceDetectionStatus('permission-denied');
+            return;
+          }
+        } else {
+          alert('マイクの権限が必要です。ブラウザの設定でマイクの使用を許可してください。');
+          return;
+        }
+      } else if (voiceDetectionStatus !== 'ready') {
         alert('音声検出システムの準備が完了していません。しばらく待ってから再試行してください。');
         return;
       }
@@ -474,6 +732,9 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
 
   // 自動音声検出録音停止
   const stopRecording = useCallback(async () => {
+    // 連続録音モードを停止
+    await stopContinuousRecording();
+    
     try {
       if (voiceDetectionRef.current) {
         voiceDetectionRef.current.pause();
@@ -535,6 +796,9 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
     setAudioUrl('');
     setSoundName('');
     setIsVoiceDetected(false);
+    setIsContinuousRecording(false);
+    setAudioSegments([]);
+    setRecordingStartTime(null);
   }, [stopRecording]);
 
     // 音声アップロード
@@ -634,11 +898,13 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
             <span className={`font-medium ${
               voiceDetectionStatus === 'ready' ? 'text-green-600' :
               voiceDetectionStatus === 'loading' ? 'text-yellow-600' :
-              voiceDetectionStatus === 'error' ? 'text-red-600' : 'text-gray-600'
+              voiceDetectionStatus === 'error' ? 'text-red-600' :
+              voiceDetectionStatus === 'permission-denied' ? 'text-red-600' : 'text-gray-600'
             }`}>
               {voiceDetectionStatus === 'ready' ? '準備完了' :
                voiceDetectionStatus === 'loading' ? '初期化中...' :
-               voiceDetectionStatus === 'error' ? 'エラー' : '待機中'}
+               voiceDetectionStatus === 'error' ? 'エラー' :
+               voiceDetectionStatus === 'permission-denied' ? '権限拒否' : '待機中'}
             </span>
           </div>
           
@@ -651,6 +917,17 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
               }`}></div>
               <span className="text-sm text-gray-600 ml-2">
                 {isVoiceDetected ? '検出中' : '待機中'}
+              </span>
+            </div>
+          )}
+          
+          {/* 連続録音インジケーター */}
+          {isContinuousRecording && (
+            <div className="mt-2 flex items-center">
+              <span className="text-sm text-gray-600 mr-2">連続録音:</span>
+              <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div>
+              <span className="text-sm text-gray-600 ml-2">
+                {audioSegments.length}セグメント ({recordingStartTime ? Math.round((Date.now() - recordingStartTime) / 1000) : 0}秒)
               </span>
             </div>
           )}
@@ -689,14 +966,16 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
           {!isRecording ? (
             <button
               onClick={startRecording}
-              disabled={voiceDetectionStatus !== 'ready'}
+              disabled={voiceDetectionStatus !== 'ready' && voiceDetectionStatus !== 'permission-denied'}
               className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                voiceDetectionStatus !== 'ready'
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-red-500 hover:bg-red-600 text-white'
+                voiceDetectionStatus === 'ready'
+                  ? 'bg-red-500 hover:bg-red-600 text-white'
+                  : voiceDetectionStatus === 'permission-denied'
+                  ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               }`}
             >
-              録音開始
+              {voiceDetectionStatus === 'permission-denied' ? '権限を許可して録音開始' : '録音開始'}
             </button>
           ) : (
             <>
@@ -778,10 +1057,11 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
       <div className="mt-6 p-4 bg-blue-50 rounded-lg">
         <h4 className="font-semibold text-blue-800 mb-2">使用方法</h4>
         <ul className="text-sm text-blue-700 space-y-1">
-          <li>• <strong>自動音声検出録音</strong>: 人の声を自動検出して録音</li>
+          <li>• <strong>連続録音モード</strong>: 長い音声を途切れることなく録音</li>
           <li>• 音声が検出されると自動的に録音が開始されます</li>
-          <li>• 音声が終了すると自動的に録音が停止されます</li>
-          <li>• 録音された音声のみが保存されます（無音部分は除去）</li>
+          <li>• 音声が終了しても録音は継続され、次の音声を待機します</li>
+          <li>• 録音停止ボタンで全ての音声セグメントを結合して保存</li>
+          <li>• 無音部分は自動的に除去され、自然な音声になります</li>
           <li>• 最大30秒まで録音可能</li>
         </ul>
         
@@ -794,6 +1074,18 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
             <li>• 音声検出の感度を調整済み（騒音対応）</li>
           </ul>
         </div>
+        
+        {voiceDetectionStatus === 'permission-denied' && (
+          <div className="mt-4 p-3 bg-red-50 rounded-lg border-l-4 border-red-400">
+            <h5 className="font-semibold text-red-800 mb-2">マイク権限について</h5>
+            <ul className="text-sm text-red-700 space-y-1">
+              <li>• マイクの使用が拒否されています</li>
+              <li>• ブラウザの設定でマイクの使用を許可してください</li>
+              <li>• アドレスバーの🔒アイコンをクリックして権限を確認</li>
+              <li>• 「権限を許可して録音開始」ボタンをクリックして再試行</li>
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* モーダル */}
