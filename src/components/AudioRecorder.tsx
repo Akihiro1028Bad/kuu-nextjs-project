@@ -214,17 +214,76 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
     }
   };
 
-  // 音声セグメントを結合する関数
+  // 音声ノイズフィルタリング関数（iPhone対応）
+  const filterAudioNoise = (audioData: Float32Array, sampleRate: number = 16000): Float32Array => {
+    const filtered = new Float32Array(audioData.length);
+    
+    // ノイズフィルタリングのパラメータ
+    const noiseThreshold = 0.01; // ノイズ閾値（iPhone用に調整）
+    const silenceThreshold = 0.005; // 無音閾値
+    const fadeInOutSamples = Math.floor(0.01 * sampleRate); // 10msのフェード
+    
+    let lastValidSample = 0;
+    let silenceCount = 0;
+    const maxSilenceCount = Math.floor(0.1 * sampleRate); // 100msの無音許容
+    
+    for (let i = 0; i < audioData.length; i++) {
+      const sample = audioData[i];
+      const absSample = Math.abs(sample);
+      
+      // ノイズフィルタリング
+      if (absSample < noiseThreshold) {
+        // 小さすぎる音は無音として扱う
+        filtered[i] = 0;
+        silenceCount++;
+      } else if (absSample < silenceThreshold) {
+        // 無音に近い音は徐々にフェードアウト
+        if (silenceCount < maxSilenceCount) {
+          const fadeFactor = 1 - (silenceCount / maxSilenceCount);
+          filtered[i] = sample * fadeFactor;
+          silenceCount++;
+        } else {
+          filtered[i] = 0;
+        }
+      } else {
+        // 有効な音声
+        filtered[i] = sample;
+        lastValidSample = sample;
+        silenceCount = 0;
+      }
+    }
+    
+    // フェードイン・アウトの適用
+    for (let i = 0; i < fadeInOutSamples && i < filtered.length; i++) {
+      const fadeFactor = i / fadeInOutSamples;
+      filtered[i] *= fadeFactor;
+    }
+    
+    for (let i = 0; i < fadeInOutSamples && i < filtered.length; i++) {
+      const fadeFactor = i / fadeInOutSamples;
+      const index = filtered.length - 1 - i;
+      if (index >= 0) {
+        filtered[index] *= fadeFactor;
+      }
+    }
+    
+    return filtered;
+  };
+
+  // 音声セグメントを結合する関数（ノイズフィルタリング付き）
   const combineAudioSegments = (segments: Float32Array[]): Float32Array => {
     if (segments.length === 0) return new Float32Array(0);
-    if (segments.length === 1) return segments[0];
+    if (segments.length === 1) return filterAudioNoise(segments[0]);
+    
+    // 各セグメントにノイズフィルタリングを適用
+    const filteredSegments = segments.map(segment => filterAudioNoise(segment));
     
     // 全セグメントの合計長を計算
-    const totalLength = segments.reduce((sum, segment) => sum + segment.length, 0);
+    const totalLength = filteredSegments.reduce((sum, segment) => sum + segment.length, 0);
     const combined = new Float32Array(totalLength);
     
     let offset = 0;
-    for (const segment of segments) {
+    for (const segment of filteredSegments) {
       combined.set(segment, offset);
       offset += segment.length;
     }
@@ -374,10 +433,17 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
               const minSamples = minDuration * 16000; // サンプル数
               
               if (audio.length >= minSamples) {
+                // ノイズフィルタリングを適用
+                const filteredAudio = filterAudioNoise(audio, 16000);
+                console.log('ノイズフィルタリング適用:', {
+                  originalLength: audio.length,
+                  filteredLength: filteredAudio.length
+                });
+                
                 try {
                   // まずWAV形式を試す
                   console.log('WAV形式で変換を試行...');
-                  const wavBlob = convertFloat32ArrayToWav(audio, 16000);
+                  const wavBlob = convertFloat32ArrayToWav(filteredAudio, 16000);
                   
                   console.log('WAV Blob詳細:', {
                     size: wavBlob.size,
@@ -388,13 +454,13 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
                   setAudioUrl(URL.createObjectURL(wavBlob));
                   console.log('WAV形式で音声録音完了:', audio.length, 'サンプル');
                   
-                } catch (wavError) {
-                  console.error('WAV変換エラー:', wavError);
-                  
-                  // WAVが失敗した場合はWebM形式を試す
-                  try {
-                    console.log('WebM形式で変換を試行...');
-                    const webmBlob = await convertFloat32ArrayToWebM(audio, 16000);
+                                  } catch (wavError) {
+                    console.error('WAV変換エラー:', wavError);
+                    
+                    // WAVが失敗した場合はWebM形式を試す
+                    try {
+                      console.log('WebM形式で変換を試行...');
+                      const webmBlob = await convertFloat32ArrayToWebM(filteredAudio, 16000);
                     
                     console.log('WebM Blob詳細:', {
                       size: webmBlob.size,
@@ -405,12 +471,12 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
                     setAudioUrl(URL.createObjectURL(webmBlob));
                     console.log('WebM形式で音声録音完了:', audio.length, 'サンプル');
                     
-                  } catch (webmError) {
-                    console.error('WebM変換エラー:', webmError);
-                    
-                    // 最後の手段：生データをBlobとして保存
-                    console.log('生データ形式で保存...');
-                    const fallbackBlob = new Blob([audio], { type: 'audio/raw' });
+                                      } catch (webmError) {
+                      console.error('WebM変換エラー:', webmError);
+                      
+                      // 最後の手段：生データをBlobとして保存
+                      console.log('生データ形式で保存...');
+                      const fallbackBlob = new Blob([filteredAudio], { type: 'audio/raw' });
                     setAudioBlob(fallbackBlob);
                     setAudioUrl(URL.createObjectURL(fallbackBlob));
                     console.log('生データ形式で音声録音完了:', audio.length, 'サンプル');
@@ -429,13 +495,13 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
             // フレーム処理のログ（デバッグ用）
             console.log('VAD確率:', probabilities);
           },
-          // VADの感度を調整（連続録音対応）
-          minSpeechFrames: 3, // 最小音声フレーム数（連続録音では短めに）
+          // VADの感度を調整（iPhone対応）
+          minSpeechFrames: 5, // 最小音声フレーム数（iPhone用に長めに）
           frameSamples: 1024, // フレームあたりのサンプル数（デフォルト: 1024）
-          positiveSpeechThreshold: 0.5, // 音声判定の閾値（連続録音では低めに）
-          negativeSpeechThreshold: 0.2, // 非音声判定の閾値（連続録音では低めに）
-          redemptionFrames: 8, // 誤検出修正フレーム数（連続録音では短めに）
-          preSpeechPadFrames: 1 // 音声開始前のパディング（連続録音では少なめに）
+          positiveSpeechThreshold: 0.6, // 音声判定の閾値（iPhone用に高めに）
+          negativeSpeechThreshold: 0.3, // 非音声判定の閾値（iPhone用に高めに）
+          redemptionFrames: 15, // 誤検出修正フレーム数（iPhone用に長めに）
+          preSpeechPadFrames: 2 // 音声開始前のパディング（iPhone用に多めに）
         });
 
         setVoiceDetectionStatus('ready');
@@ -1060,20 +1126,22 @@ export default function AudioRecorder({ onUploadSuccess }: AudioRecorderProps) {
           <li>• <strong>連続録音モード</strong>: 長い音声を途切れることなく録音</li>
           <li>• 音声が検出されると自動的に録音が開始されます</li>
           <li>• 音声が終了しても録音は継続され、次の音声を待機します</li>
-          <li>• 録音停止ボタンで全ての音声セグメントを結合して保存</li>
-          <li>• 無音部分は自動的に除去され、自然な音声になります</li>
-          <li>• 最大30秒まで録音可能</li>
+                      <li>• 録音停止ボタンで全ての音声セグメントを結合して保存</li>
+            <li>• 無音部分は自動的に除去され、自然な音声になります</li>
+            <li>• <strong>iPhone対応</strong>: 息継ぎや小さなノイズを自動フィルタリング</li>
+            <li>• 最大30秒まで録音可能</li>
         </ul>
         
-        <div className="mt-4 p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-400">
-          <h5 className="font-semibold text-yellow-800 mb-2">騒音環境での使用</h5>
-          <ul className="text-sm text-yellow-700 space-y-1">
-            <li>• 騒音環境では1秒以上の音声が必要です</li>
-            <li>• 背景音が大きい場合は、マイクに近づいて話してください</li>
-            <li>• 短い音声や背景音は自動的に除外されます</li>
-            <li>• 音声検出の感度を調整済み（騒音対応）</li>
-          </ul>
-        </div>
+                  <div className="mt-4 p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-400">
+            <h5 className="font-semibold text-yellow-800 mb-2">騒音環境・iPhoneでの使用</h5>
+            <ul className="text-sm text-yellow-700 space-y-1">
+              <li>• 騒音環境では1秒以上の音声が必要です</li>
+              <li>• 背景音が大きい場合は、マイクに近づいて話してください</li>
+              <li>• 短い音声や背景音は自動的に除外されます</li>
+              <li>• iPhoneの息継ぎ音や小さなノイズは自動フィルタリング</li>
+              <li>• 音声検出の感度を調整済み（騒音・iPhone対応）</li>
+            </ul>
+          </div>
         
         {voiceDetectionStatus === 'permission-denied' && (
           <div className="mt-4 p-3 bg-red-50 rounded-lg border-l-4 border-red-400">
