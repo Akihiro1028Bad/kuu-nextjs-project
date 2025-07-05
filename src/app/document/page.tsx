@@ -1,7 +1,7 @@
 // app/document/page.tsx
 "use client";
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
 import FadeIn from "@/components/FadeIn";
 import "@fortawesome/fontawesome-free/css/all.min.css";
@@ -9,6 +9,21 @@ import "@fortawesome/fontawesome-free/css/all.min.css";
 export default function DocumentPage() {
     const pronunciationAudioRef = useRef<HTMLAudioElement>(null);
     const playPronunciationButtonRef = useRef<HTMLButtonElement>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+
+    // 固定の音声ファイル（1つだけ）
+    const kuuSound = '/uploads/sounds/kuu.mp3';
+
+    const playKuuSound = () => {
+        const audio = pronunciationAudioRef.current;
+        if (audio) {
+            audio.src = kuuSound;
+            audio.play().catch(error => {
+                console.error('音声再生エラー:', error);
+                setIsPlaying(false);
+            });
+        }
+    };
 
     useEffect(() => {
         const audio = pronunciationAudioRef.current;
@@ -16,30 +31,34 @@ export default function DocumentPage() {
 
         if (audio && button) {
             const handlePlay = () => {
+                setIsPlaying(true);
                 button.disabled = true;
                 button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 再生中...';
             };
 
             const handleEnded = () => {
+                setIsPlaying(false);
                 button.disabled = false;
                 button.innerHTML = '<i class="fas fa-play-circle"></i> 発音を聞く';
             };
 
-            button.addEventListener('click', () => {
-                audio.play();
-            });
+            const handleError = () => {
+                setIsPlaying(false);
+                button.disabled = false;
+                button.innerHTML = '<i class="fas fa-exclamation-triangle"></i> エラー';
+                console.error('音声ファイルの読み込みに失敗しました');
+            };
 
+            button.addEventListener('click', playKuuSound);
             audio.addEventListener('play', handlePlay);
             audio.addEventListener('ended', handleEnded);
+            audio.addEventListener('error', handleError);
 
             return () => {
-                // Ensure event listeners are properly removed for cleanup
-                // It's better to capture the event listener functions to remove them
-                // rather than recreating an anonymous function in removeEventListener
-                const clickHandler = () => audio.play();
-                button.removeEventListener('click', clickHandler);
+                button.removeEventListener('click', playKuuSound);
                 audio.removeEventListener('play', handlePlay);
                 audio.removeEventListener('ended', handleEnded);
+                audio.removeEventListener('error', handleError);
             };
         }
     }, []);
@@ -133,9 +152,14 @@ export default function DocumentPage() {
                                         </div>
                                         <button
                                             ref={playPronunciationButtonRef}
-                                            className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-gradient-to-r from-orange-500 to-rose-400 text-white text-xs sm:text-sm font-semibold shadow-md hover:from-orange-600 hover:to-rose-500 transition-colors duration-200 flex items-center justify-center w-fit"
+                                            className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-full text-white text-xs sm:text-sm font-semibold shadow-md transition-all duration-200 flex items-center justify-center w-fit ${
+                                                isPlaying 
+                                                    ? 'bg-gradient-to-r from-orange-400 to-rose-300 cursor-not-allowed' 
+                                                    : 'bg-gradient-to-r from-orange-500 to-rose-400 hover:from-orange-600 hover:to-rose-500 hover:scale-105'
+                                            }`}
                                         >
-                                            <i className="fas fa-play-circle mr-2"></i>発音を聞く
+                                            <i className={`mr-2 ${isPlaying ? 'fas fa-spinner fa-spin' : 'fas fa-play-circle'}`}></i>
+                                            {isPlaying ? '再生中...' : '発音を聞く'}
                                         </button>
                                     </li>
                                     <li className="flex items-start">
@@ -148,7 +172,7 @@ export default function DocumentPage() {
                                     </li>
                                 </ul>
                             </div>
-                            <audio id="pronunciation-audio" ref={pronunciationAudioRef} src="/audio/kuu7.mp3" preload="auto"></audio>
+                            <audio id="pronunciation-audio" ref={pronunciationAudioRef} preload="auto"></audio>
                         </section>
                     </FadeIn>
 
@@ -312,23 +336,24 @@ export default function DocumentPage() {
                         </section>
                     </FadeIn>
 
-                    {/* Multiple audio files (hidden) */}
-                    <audio id="kuuSound" preload="auto" style={{ display: 'none' }}>
-                        <source src="/audio/kuu1.mp3" type="audio/mp3" />
-                        <source src="/audio/kuu2.mp3" type="audio/mp3" />
-                        <source src="/audio/kuu3.mp3" type="audio/mp3" />
-                        <source src="/audio/kuu4.mp3" type="audio/mp3" />
-                        <source src="/audio/kuu5.mp3" type="audio/mp3" />
-                        <source src="/audio/kuu6.mp3" type="audio/mp3" />
-                        <source src="/audio/kuu7.mp3" type="audio/mp3" />
-                        <source src="/audio/kuu8.mp3" type="audio/mp3" />
-                        <source src="/audio/kuu9.mp3" type="audio/mp3" />
-                        <source src="/audio/kuu10.mp3" type="audio/mp3" />
-                        <source src="/audio/kuu11.mp3" type="audio/mp3" />
-                        <source src="/audio/kuu12.mp3" type="audio/mp3" />
-                        <source src="/audio/kuu13.mp3" type="audio/mp3" />
-                        Your browser does not support the audio element.
-                    </audio>
+                    {/* 音声ファイルの説明 */}
+                    <FadeIn delay={200}>
+                        <section className="section bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6 lg:p-8 rounded-xl shadow-lg border border-blue-100 transition-all duration-300 hover:shadow-xl hover:scale-[1.005]">
+                            <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-blue-900 mb-3 sm:mb-4 lg:mb-6 flex items-center">
+                                <span className="text-2xl sm:text-3xl lg:text-4xl mr-2 sm:mr-3 text-blue-600">🎵</span> 
+                                <span className="break-words">音声について</span>
+                            </h2>
+                            <p className="text-sm sm:text-base lg:text-lg leading-relaxed text-blue-800 mb-4">
+                                上記の「発音を聞く」ボタンをクリックすると、実際のユーザーが録音した「くぅー」の音声を再生できます。標準的な「くぅー」の発音をお聞きください。
+                            </p>
+                            <div className="bg-blue-100 rounded-lg p-3">
+                                <p className="text-sm text-blue-700">
+                                    <i className="fas fa-info-circle mr-2"></i>
+                                    音声は固定のファイルを使用しているため、毎回同じ発音が再生されます。
+                                </p>
+                            </div>
+                        </section>
+                    </FadeIn>
                 </div>
             </main>
         </>
